@@ -1,0 +1,33 @@
+FROM php:8.2-fpm
+
+# Install system dependencies (minimal)
+RUN apt-get update && apt-get install -y \
+    libpng-dev \
+    zip \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install minimal PHP extensions
+RUN docker-php-ext-install pdo_mysql
+
+# Get latest Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy existing application directory contents
+COPY . /var/www/html
+
+# Change ownership
+RUN chown -R www-data:www-data /var/www/html
+
+# Install PHP dependencies (skip dev packages for speed)
+RUN composer install --no-dev --no-scripts --optimize-autoloader
+
+# Change current user to www-data
+USER www-data
+
+# Expose port 9000 and start php-fpm server
+EXPOSE 9000
+CMD ["php-fpm"]

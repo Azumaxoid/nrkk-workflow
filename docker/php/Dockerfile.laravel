@@ -1,0 +1,45 @@
+FROM php:8.2-fpm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PHP extensions needed for Laravel
+RUN docker-php-ext-install pdo_mysql mbstring xml
+
+# Get latest Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy composer files first to leverage Docker cache
+COPY composer.json ./
+
+# Install dependencies
+RUN composer install --no-scripts --no-autoloader --no-dev
+
+# Copy application code
+COPY . .
+
+# Generate autoload files and optimize for production
+RUN composer dump-autoload --optimize
+
+# Set proper permissions
+RUN chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
+
+# Switch to www-data user
+USER www-data
+
+# Expose port 9000 and start php-fpm server
+EXPOSE 9000
+CMD ["php-fpm"]

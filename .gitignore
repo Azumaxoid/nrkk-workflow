@@ -1,0 +1,116 @@
+# Laravel specific
+/vendor/
+/node_modules/
+/public/hot
+/public/storage
+/storage/*.key
+/.env
+/.env.backup
+/.env.production
+/Homestead.json
+/Homestead.yaml
+/auth.json
+/npm-debug.log
+/yarn-error.log
+
+# IDE and Editors
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.tmp
+
+# Logs
+/storage/logs/*.log
+/storage/framework/cache/data/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/debugbar/*
+
+# Cache and temporary files
+/bootstrap/cache/*.php
+/storage/app/public/*
+!/storage/app/public/.gitkeep
+/public/build/
+/public/mix-manifest.json
+
+# Database
+*.sqlite
+*.db
+
+# Testing
+/.phpunit.result.cache
+/coverage/
+/_ide_helper.php
+/_ide_helper_models.php
+/.phpstorm.meta.php
+
+# Docker
+.env.docker
+docker-compose.override.yml
+
+# Python (for Selenium tests)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments (for Selenium tests)
+test_env/
+venv/
+env/
+ENV/
+
+# Selenium test artifacts
+*.png
+error_screenshot_*.png
+geckodriver.log
+chromedriver.log
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Compressed files
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Application specific
+/public/uploads/
+/public/storage/
+/storage/app/uploads/
