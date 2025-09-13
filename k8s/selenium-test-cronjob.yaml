@@ -1,0 +1,103 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: approval-workflow-selenium-cron
+  namespace: default
+  labels:
+    app: approval-workflow-test
+    component: selenium-cron
+spec:
+  # 毎日午前2時に実行
+  schedule: "0 2 * * *"
+  timezone: "Asia/Tokyo"
+  
+  # 同時実行ポリシー（前の実行が完了していなくても新しい実行を開始）
+  concurrencyPolicy: Allow
+  
+  # 成功したJobの保持数
+  successfulJobsHistoryLimit: 3
+  
+  # 失敗したJobの保持数  
+  failedJobsHistoryLimit: 5
+  
+  # Job開始期限（スケジュール時刻から300秒以内）
+  startingDeadlineSeconds: 300
+  
+  jobTemplate:
+    metadata:
+      labels:
+        app: approval-workflow-test
+        component: selenium-cron
+    spec:
+      ttlSecondsAfterFinished: 7200  # 2時間後に自動削除
+      backoffLimit: 2
+      
+      template:
+        metadata:
+          labels:
+            app: approval-workflow-test
+            component: selenium-cron
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: selenium-test
+            image: approval-workflow-selenium:latest
+            imagePullPolicy: IfNotPresent
+            
+            # 6回実行するコマンド
+            command: ["/bin/bash"]
+            args: 
+            - "-c"
+            - |
+              for i in {1..6}; do
+                echo "=== Selenium Test Run $i/6 ==="
+                python tests/test_multi_browser_approval.py
+                echo ""
+                sleep 5
+              done
+            
+            env:
+            - name: APP_URL
+              value: "http://approval-workflow-nginx:80"
+            - name: DISPLAY
+              value: ":99"
+            - name: CHROME_DRIVER_PATH
+              value: "/usr/local/bin/chromedriver"
+            
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "250m"
+              limits:
+                memory: "1Gi"
+                cpu: "500m"
+                
+            securityContext:
+              runAsUser: 1000
+              runAsGroup: 1000
+              allowPrivilegeEscalation: false
+              capabilities:
+                add:
+                - SYS_ADMIN
+                
+            volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+              
+            livenessProbe:
+              exec:
+                command:
+                - pgrep
+                - python
+              initialDelaySeconds: 30
+              periodSeconds: 60
+              timeoutSeconds: 10
+              
+          volumes:
+          - name: dshm
+            emptyDir:
+              medium: Memory
+              sizeLimit: 256Mi
+              
+          nodeSelector:
+            kubernetes.io/os: linux

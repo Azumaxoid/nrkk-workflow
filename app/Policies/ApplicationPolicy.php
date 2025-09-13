@@ -17,9 +17,22 @@ class ApplicationPolicy
 
     public function view(User $user, Application $application)
     {
-        return $user->isAdmin() || 
-               $user->id === $application->applicant_id ||
-               ($user->isReviewer() && $this->canUserApprove($user, $application));
+        // 管理者は全て閲覧可能
+        if ($user->isAdmin()) {
+            return true;
+        }
+        
+        // 申請者本人は閲覧可能
+        if ($user->id === $application->applicant_id) {
+            return true;
+        }
+        
+        // 承認者は同じ組織の申請のみ閲覧可能
+        if ($user->isApprover() || $user->isReviewer()) {
+            return $user->organization_id === $application->applicant->organization_id;
+        }
+        
+        return false;
     }
 
     public function create(User $user)

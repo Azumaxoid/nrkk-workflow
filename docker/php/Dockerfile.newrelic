@@ -1,0 +1,68 @@
+FROM php:8.2-fpm
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PHP extensions needed for Laravel
+RUN docker-php-ext-install pdo_mysql mbstring xml
+
+RUN curl -L https://download.newrelic.com/php_agent/archive/11.10.0.24/newrelic-php5-11.10.0.24-linux.tar.gz | tar -C /tmp -zx \
+    && export NR_INSTALL_USE_CP_NOT_LN=1 \
+    && export NR_INSTALL_SILENT=1 \
+    && /tmp/newrelic-php5-*/newrelic-install install \
+    && rm -rf /tmp/newrelic-php5-*
+
+# Get latest Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/html
+
+# Copy everything
+COPY . .
+
+# Create storage and cache directories with proper permissions
+RUN mkdir -p /var/www/html/storage/logs \
+    && mkdir -p /var/www/html/bootstrap/cache \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html/storage \
+    && chmod -R 755 /var/www/html/bootstrap/cache
+
+# Install gosu for user switching
+RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
+
+# Create entrypoint script to handle dependencies
+RUN echo '#!/bin/bash\n\
+cd /var/www/html\n\
+\n\
+# Install composer dependencies\n\
+composer install --no-scripts --no-dev --optimize-autoloader\n\
+\n\
+# Set New Relic configuration from environment variables\n\
+if [ -n "$NEWRELIC_LICENSE_KEY" ]; then\n\
+    echo "newrelic.license = \"$NEWRELIC_LICENSE_KEY\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
+fi\n\
+\n\
+if [ -n "$NEWRELIC_APP_NAME" ]; then\n\
+    echo "newrelic.appname = \"$NEWRELIC_APP_NAME\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
+fi\n\
+\n\
+echo "newrelic.daemon.location = \"/usr/bin/newrelic-daemon\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
+echo "newrelic.daemon.port = \"/tmp/.newrelic.sock\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
+\n\
+# Execute the main command\n\
+exec "$@"' > /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
+
+# Expose port 9000 and start php-fpm server
+EXPOSE 9000
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["php-fpm"]

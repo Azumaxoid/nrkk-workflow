@@ -13,8 +13,15 @@ class ApplicationController extends Controller
     {
         $query = Application::with(['applicant', 'approvals.approver']);
 
-        if (Auth::user()->isApplicant()) {
+        if (Auth::user()->isAdmin()) {
+            // 管理者は全ての申請を表示
+        } elseif (Auth::user()->isApplicant()) {
             $query->byApplicant(Auth::id());
+        } elseif (Auth::user()->isApprover()) {
+            // 承認者は自分の組織の申請のみ表示
+            $query->whereHas('applicant', function($q) {
+                $q->where('organization_id', Auth::user()->organization_id);
+            });
         }
 
         if ($request->filled('status')) {

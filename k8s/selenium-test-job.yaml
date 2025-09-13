@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: approval-workflow-selenium-test
+  namespace: default
+  labels:
+    app: approval-workflow-test
+    component: selenium
+spec:
+  ttlSecondsAfterFinished: 3600  # 1時間後に自動削除
+  backoffLimit: 3  # 最大3回リトライ
+  template:
+    metadata:
+      labels:
+        app: approval-workflow-test
+        component: selenium
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: selenium-test
+        image: approval-workflow-selenium:latest
+        imagePullPolicy: IfNotPresent
+        
+        env:
+        - name: APP_URL
+          value: "http://approval-workflow-nginx:80"  # K8s内のサービス名
+        - name: DISPLAY
+          value: ":99"
+        - name: CHROME_DRIVER_PATH
+          value: "/usr/local/bin/chromedriver"
+        
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+            
+        # セキュリティコンテキスト（Chrome実行のため）
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            add:
+            - SYS_ADMIN  # Chrome sandboxのため必要
+            
+        # ボリュームマウント（共有メモリ）
+        volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+          
+        # プローブ設定
+        livenessProbe:
+          exec:
+            command:
+            - pgrep
+            - python
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 256Mi
+          
+      # ノード選択（オプション）
+      nodeSelector:
+        kubernetes.io/os: linux

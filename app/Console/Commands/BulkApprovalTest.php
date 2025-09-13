@@ -25,6 +25,8 @@ class BulkApprovalTest extends Command
 
     public function handle()
     {
+        $startTime = microtime(true);
+        
         $this->info('🧪 マルチ組織一括承認テスト開始');
         $this->info('=' . str_repeat('=', 50));
 
@@ -169,12 +171,17 @@ class BulkApprovalTest extends Command
             }
 
             // 結果表示
+            $endTime = microtime(true);
+            $executionTime = $endTime - $startTime;
+            
             $this->info("\n🎉 テスト完了!");
             $this->info("📊 結果サマリー:");
             $this->line("   - 選択組織数: 3");
             $this->line("   - 作成申請数: {$totalCreated}");
             $this->line("   - 承認処理数: {$approvedCount}");
+            $this->line("   - 実行時間: " . round($executionTime, 2) . "秒");
             
+            // New Relicにメトリクスを記録
             // 最終状態確認
             $this->info("\n📋 最終状態確認:");
             foreach ($createdApplications as $app) {
