@@ -4,12 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Models\Application;
 use App\Models\Approval;
+use App\Services\ApprovalService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class DashboardController extends Controller
 {
+    protected $approvalService;
+
+    public function __construct(ApprovalService $approvalService)
+    {
+        $this->approvalService = $approvalService;
+    }
     public function index()
     {
         $user = Auth::user();
@@ -28,8 +35,13 @@ class DashboardController extends Controller
         }
 
         if ($user->isReviewer()) {
-            $stats['pending_approvals'] = Approval::byApprover($user->id)->pending()->count();
-            $stats['my_approvals_count'] = Approval::byApprover($user->id)->count();
+            $stats['pending_approvals'] = $this->approvalService->countApprovals([
+                'approver_id' => $user->id,
+                'status' => 'pending'
+            ]);
+            $stats['my_approvals_count'] = $this->approvalService->countApprovals([
+                'approver_id' => $user->id
+            ]);
         }
 
         if ($user->isAdmin()) {
@@ -51,12 +63,13 @@ class DashboardController extends Controller
         }
 
         if ($user->isReviewer()) {
-            $pendingApprovals = Approval::byApprover($user->id)
-                ->pending()
-                ->with(['application.applicant'])
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get();
+            $pendingApprovals = $this->approvalService->getApprovals([
+                'approver_id' => $user->id,
+                'status' => 'pending',
+                'with' => ['application.applicant'],
+                'order_by' => 'created_at',
+                'order_direction' => 'desc'
+            ])->take(5);
         }
 
         $monthlyStats = [];

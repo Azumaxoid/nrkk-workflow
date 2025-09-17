@@ -35,6 +35,14 @@ Route::middleware(['auth'])->group(function () {
     Route::post('approvals/{approval}/reject', [ApprovalController::class, 'reject'])->name('approvals.reject');
     Route::post('approvals/{approval}/skip', [ApprovalController::class, 'skip'])->name('approvals.skip');
 
+    // Bulk Approvals
+    Route::post('approvals/bulk-approve', [ApprovalController::class, 'bulkApprove'])->name('approvals.bulk-approve');
+    Route::post('approvals/bulk-reject', [ApprovalController::class, 'bulkReject'])->name('approvals.bulk-reject');
+
+    // Approve All
+    Route::post('approvals/approve-all', [ApprovalController::class, 'approveAll'])->name('approvals.approve-all');
+    Route::post('approvals/reject-all', [ApprovalController::class, 'rejectAll'])->name('approvals.reject-all');
+
     // Notifications
     Route::get('notifications', [NotificationController::class, 'index'])->name('notifications.index');
     Route::get('notifications/settings', [NotificationController::class, 'settings'])->name('notifications.settings');

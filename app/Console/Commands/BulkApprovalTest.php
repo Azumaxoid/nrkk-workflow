@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\ApprovalFlow;
 use App\Models\Approval;
 use App\Services\NotificationService;
+use App\Services\NewRelicService;
 
 class BulkApprovalTest extends Command
 {
@@ -16,19 +17,25 @@ class BulkApprovalTest extends Command
     protected $description = 'マルチ組織一括承認テストの実行';
 
     protected $notificationService;
+    protected $newRelicService;
 
-    public function __construct(NotificationService $notificationService)
+    public function __construct(NotificationService $notificationService, NewRelicService $newRelicService)
     {
         parent::__construct();
         $this->notificationService = $notificationService;
+        $this->newRelicService = $newRelicService;
     }
 
     public function handle()
     {
         $startTime = microtime(true);
-        
+
         $this->info('🧪 マルチ組織一括承認テスト開始');
         $this->info('=' . str_repeat('=', 50));
+
+        // New Relicトランザクション名を設定
+        $this->newRelicService->setTransactionName('BulkApprovalTest');
+        $this->newRelicService->backgroundJob(true);
 
         try {
             // Step 1: 3つの組織をランダムに選択
@@ -102,11 +109,16 @@ class BulkApprovalTest extends Command
             $approvedCount = 0;
             
             // 各組織の承認者で承認処理
+            $organizationResults = [];
+
             foreach ($selectedOrganizations as $org) {
+                $orgStartTime = microtime(true);
+                $orgApprovedCount = 0;
+
                 $approvers = User::where('organization_id', $org->id)
                     ->where('role', 'approver')
                     ->get();
-                
+
                 if ($approvers->isEmpty()) {
                     $this->warn("   ⚠️ {$org->name}に承認者がいません");
                     continue;
@@ -114,15 +126,15 @@ class BulkApprovalTest extends Command
 
                 foreach ($approvers as $approver) {
                     $this->info("\n👨‍💼 承認者: {$approver->name} ({$org->name})");
-                    
+
                     // この承認者の承認待ち案件を取得
                     $pendingApprovals = Approval::where('approver_id', $approver->id)
                         ->where('status', 'pending')
                         ->with('application')
                         ->get();
-                    
+
                     $this->line("   承認待ち件数: {$pendingApprovals->count()}");
-                    
+
                     foreach ($pendingApprovals as $approval) {
                         try {
                             $approval->update([
@@ -130,18 +142,39 @@ class BulkApprovalTest extends Command
                                 'comment' => 'テスト一括承認 - 自動承認',
                                 'approved_at' => now()
                             ]);
-                            
+
                             $approvedCount++;
+                            $orgApprovedCount++;
                             $this->line("   ✅ 承認: {$approval->application->title}");
-                            
+
                             // 次のステップのチェック（簡単実装）
                             $this->checkApplicationStatus($approval->application);
-                            
+
                         } catch (\Exception $e) {
                             $this->error("   ❌ 承認エラー: {$e->getMessage()}");
                         }
                     }
                 }
+
+                // 組織ごとのメトリクスを記録
+                $orgProcessingTime = microtime(true) - $orgStartTime;
+                $organizationResults[] = [
+                    'organization_id' => $org->id,
+                    'organization_name' => $org->name,
+                    'approved_count' => $orgApprovedCount,
+                    'processing_time' => $orgProcessingTime,
+                    'success' => true,
+                ];
+
+                // New Relicに組織ごとのメトリクスを送信
+                $this->newRelicService->recordCustomEvent('OrganizationApproval', [
+                    'organization_id' => $org->id,
+                    'organization_name' => $org->name,
+                    'approval_count' => $orgApprovedCount,
+                    'processing_time' => $orgProcessingTime,
+                    'approval_type' => 'bulk',
+                    'success' => true,
+                ]);
             }
 
             // 最終承認（管理者による）
@@ -173,15 +206,41 @@ class BulkApprovalTest extends Command
             // 結果表示
             $endTime = microtime(true);
             $executionTime = $endTime - $startTime;
-            
+
             $this->info("\n🎉 テスト完了!");
             $this->info("📊 結果サマリー:");
             $this->line("   - 選択組織数: 3");
             $this->line("   - 作成申請数: {$totalCreated}");
             $this->line("   - 承認処理数: {$approvedCount}");
             $this->line("   - 実行時間: " . round($executionTime, 2) . "秒");
-            
-            // New Relicにメトリクスを記録
+
+            // New Relicに全体メトリクスを記録
+            $totalApprovals = 0;
+            $totalTime = 0;
+            $successCount = 0;
+            foreach ($organizationResults as $result) {
+                $totalApprovals += $result['approved_count'] ?? 0;
+                $totalTime += $result['processing_time'] ?? 0;
+                if ($result['success'] ?? false) {
+                    $successCount++;
+                }
+            }
+
+            $this->newRelicService->recordCustomEvent('BulkApprovalTestCompleted', [
+                'total_created' => $totalCreated,
+                'total_approved' => $approvedCount,
+                'total_execution_time' => $executionTime,
+                'organization_count' => count($selectedOrganizations),
+                'total_approvals' => $totalApprovals,
+                'total_processing_time' => $totalTime,
+                'success_count' => $successCount,
+                'average_processing_time' => count($organizationResults) > 0 ? $totalTime / count($organizationResults) : 0,
+            ]);
+
+            // メトリクスも記録
+            $this->newRelicService->recordMetric('BulkApproval/TotalApprovals', $totalApprovals);
+            $this->newRelicService->recordMetric('BulkApproval/TotalTime', $totalTime);
+            $this->newRelicService->recordMetric('BulkApproval/SuccessRate', count($organizationResults) > 0 ? ($successCount / count($organizationResults)) * 100 : 0);
             // 最終状態確認
             $this->info("\n📋 最終状態確認:");
             foreach ($createdApplications as $app) {
@@ -192,6 +251,9 @@ class BulkApprovalTest extends Command
         } catch (\Exception $e) {
             $this->error("❌ テスト実行エラー: {$e->getMessage()}");
             $this->error($e->getTraceAsString());
+
+            // New Relicにエラーを記録
+            $this->newRelicService->noticeError('BulkApprovalTest failed', $e);
         }
     }
 

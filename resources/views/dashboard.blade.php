@@ -10,7 +10,7 @@
             </h2>
             <div>
                 @if(auth()->user()->isApplicant())
-                    <a href="{{ route('applications.create') }}" class="btn btn-primary">
+                    <a href="{{ route('applications.create') }}" class="btn btn-primary" id="newApplicationBtn">
                         <i class="fas fa-plus me-1"></i>
                         新規申請
                     </a>

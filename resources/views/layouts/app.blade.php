@@ -41,7 +41,7 @@
                         </li>
                         @if(auth()->user()->isReviewer())
                         <li class="nav-item">
-                            <a class="nav-link" href="{{ route('applications.my-approvals') }}">
+                            <a class="nav-link" href="{{ route('applications.my-approvals') }}" id="applicationsBtn">
                                 <i class="fas fa-tasks me-1"></i>
                                 承認待ち
                                 @if($pendingCount = auth()->user()->approvals()->pending()->count())

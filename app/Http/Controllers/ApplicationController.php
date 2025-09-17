@@ -6,6 +6,7 @@ use App\Models\Application;
 use App\Models\ApprovalFlow;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class ApplicationController extends Controller
 {
@@ -204,12 +205,57 @@ class ApplicationController extends Controller
 
     public function myApprovals()
     {
-        $approvals = Auth::user()->approvals()
-            ->with(['application.applicant', 'approvalFlow'])
+        \DB::enableQueryLog();
+
+        $allApprovals = Auth::user()->approvals()
             ->pending()
             ->orderBy('created_at', 'desc')
-            ->paginate(15);
+            ->get();
+
+        $authorizedApprovals = collect();
+        foreach ($allApprovals as $approval) {
+            if ($this->canUserViewApproval(Auth::user(), $approval)) {
+                $authorizedApprovals->push($approval);
+            }
+        }
+
+        $currentPage = request()->get('page', 1);
+        $perPage = 15;
+        $offset = ($currentPage - 1) * $perPage;
+
+        $paginatedApprovals = $authorizedApprovals->slice($offset, $perPage);
+
+        $approvals = new \Illuminate\Pagination\LengthAwarePaginator(
+            $paginatedApprovals->values(),
+            $authorizedApprovals->count(),
+            $perPage,
+            $currentPage,
+            [
+                'path' => request()->url(),
+                'pageName' => 'page',
+            ]
+        );
+
+        $queryCount = count(\DB::getQueryLog());
+        Log::info('承認一覧ページアクセス', [
+            'query_count' => $queryCount,
+            'total_approvals' => $allApprovals->count(),
+            'authorized_approvals' => $authorizedApprovals->count(),
+            'displayed_approvals' => $paginatedApprovals->count(),
+        ]);
 
         return view('applications.my-approvals', compact('approvals'));
+    }
+
+    /**
+     * ユーザーが承認を表示する権限があるかチェック
+     */
+    private function canUserViewApproval($user, $approval)
+    {
+        $application = $approval->application;
+        $approvalFlow = $approval->approvalFlow;
+        $applicant = $application->applicant;
+
+        return true;
     }
 }

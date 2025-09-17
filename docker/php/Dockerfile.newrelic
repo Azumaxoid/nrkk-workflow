@@ -40,26 +40,9 @@ RUN mkdir -p /var/www/html/storage/logs \
 RUN apt-get update && apt-get install -y gosu && rm -rf /var/lib/apt/lists/*
 
 # Create entrypoint script to handle dependencies
-RUN echo '#!/bin/bash\n\
-cd /var/www/html\n\
-\n\
-# Install composer dependencies\n\
-composer install --no-scripts --no-dev --optimize-autoloader\n\
-\n\
-# Set New Relic configuration from environment variables\n\
-if [ -n "$NEWRELIC_LICENSE_KEY" ]; then\n\
-    echo "newrelic.license = \"$NEWRELIC_LICENSE_KEY\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
-fi\n\
-\n\
-if [ -n "$NEWRELIC_APP_NAME" ]; then\n\
-    echo "newrelic.appname = \"$NEWRELIC_APP_NAME\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
-fi\n\
-\n\
-echo "newrelic.daemon.location = \"/usr/bin/newrelic-daemon\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
-echo "newrelic.daemon.port = \"/tmp/.newrelic.sock\"" >> /usr/local/etc/php/conf.d/newrelic.ini\n\
-\n\
-# Execute the main command\n\
-exec "$@"' > /usr/local/bin/entrypoint.sh \
+RUN composer install --no-scripts --no-dev --optimize-autoloader
+
+RUN cp entrypoint.sh /usr/local/bin/entrypoint.sh \
     && chmod +x /usr/local/bin/entrypoint.sh
 
 # Expose port 9000 and start php-fpm server

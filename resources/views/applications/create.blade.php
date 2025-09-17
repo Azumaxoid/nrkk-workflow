@@ -146,9 +146,9 @@
                             キャンセル
                         </a>
                         <div>
-                            <button type="submit" class="btn btn-primary">
+                            <button id="submitApplicationBtn" type="submit" class="btn btn-primary">
                                 <i class="fas fa-save me-1"></i>
-                                下書き保存
+                                申請
                             </button>
                         </div>
                     </div>

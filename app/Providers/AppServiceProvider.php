@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\ApprovalService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -11,7 +12,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // ApprovalServiceをシングルトンとして登録
+        $this->app->singleton(ApprovalService::class, function ($app) {
+            return new ApprovalService();
+        });
     }
 
     /**

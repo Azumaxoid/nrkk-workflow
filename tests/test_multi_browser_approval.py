@@ -43,6 +43,7 @@ class MultiBrowserApprovalTest:
 
     def create_driver(self):
         """新しいChromeドライバーインスタンスを作成"""
+        print("    🔧 Creating new Chrome driver...")
         chrome_options = Options()
         
         # コンテナ環境での必須オプション
@@ -62,12 +63,17 @@ class MultiBrowserApprovalTest:
         # コンテナ環境でのChromeDriverパス
         chrome_driver_path = os.getenv('CHROME_DRIVER_PATH')
         if chrome_driver_path and os.path.exists(chrome_driver_path):
+            print(f"    ✓ Using Chrome driver at: {chrome_driver_path}")
             service = Service(chrome_driver_path)
         else:
             # ローカル開発環境ではwebdriver-managerを使用
+            print("    ⏳ Installing Chrome driver via webdriver-manager...")
             service = Service(ChromeDriverManager().install())
-        
+            print("    ✓ Chrome driver installed")
+
+        print("    ⏳ Starting Chrome browser...")
         driver = webdriver.Chrome(service=service, options=chrome_options)
+        print("    ✅ Chrome browser started")
         return driver
 
     def login_user(self, user):
@@ -186,96 +192,151 @@ class MultiBrowserApprovalTest:
                     
         return created
 
-    def approve_with_user(self, approver):
-        """指定承認者用ブラウザで承認処理"""
-        print(f"👨‍💼 Starting approval browser for {approver['name']}...")
-        
+    def approve_with_user(self, approver, org_index):
+        """指定承認者用ブラウザで承認処理（組織インデックスに応じて全承認か選択承認を使い分け）"""
+        print(f"👨‍💼 Starting approval browser for {approver['name']} (Organization {org_index + 1})...")
+
         driver, wait = self.login_user(approver)
         if not driver:
             return 0
-            
+
         approved = 0
         try:
-            driver.get(f"{self.base_url}/applications")
+            # 承認待ち一覧ページへ移動 - applicationsBtnをクリック
+            applications_btn = wait.until(EC.element_to_be_clickable((By.ID, "applicationsBtn")))
+            applications_btn.click()
             time.sleep(3)
-            
-            # 「確認中」バッジがついた行を探す
-            pending_rows = driver.find_elements(By.XPATH, "//span[contains(@class, 'badge') and contains(text(), '確認中')]/ancestor::tr")
-            row_count = len(pending_rows)
-            
-            print(f"   📋 {approver['name']} found {row_count} pending approvals")
-            
-            if row_count > 0:
-                # Process up to 3 approvals
-                for i in range(min(3, row_count)):
+
+            # 2番目(index=1)と5番目(index=4)の組織は「全て承認」を使用
+            if org_index == 1 or org_index == 4:
+                print(f"   🎯 Organization {org_index + 1}: Using 'Approve All' feature")
+
+                # 承認待ちの数を確認
+                approval_cards = driver.find_elements(By.CSS_SELECTOR, ".card")
+                pending_count = len(approval_cards)
+                print(f"   📋 Found {pending_count} pending approvals")
+
+                if pending_count > 0:
                     try:
-                        # 再度確認中の行を取得（DOM更新のため）
-                        current_rows = driver.find_elements(By.XPATH, "//span[contains(@class, 'badge') and contains(text(), '確認中')]/ancestor::tr")
-                        
-                        if i < len(current_rows):
-                            row = current_rows[i]
-                            
-                            # 行内のリンクをクリックして詳細ページに移動
-                            link = row.find_element(By.TAG_NAME, "a")
-                            link.click()
+                        # 「全て承認」ボタンをIDで検索してクリック
+                        approve_all_button = wait.until(EC.element_to_be_clickable((By.ID, "approveAllBtn")))
+                        approve_all_button.click()
+                        print("   ✅ Clicked 'Approve All' button")
+                        time.sleep(2)
+
+                        # alertを処理
+                        try:
+                            alert = driver.switch_to.alert
+                            print(f"   📢 Alert: {alert.text[:50]}...")
+                            alert.accept()
+                            print("   ✅ Alert accepted")
+                        except:
+                            print("   ⚠️ No alert found")
+
+                        # モーダルを待つ
+                        try:
+                            modal = wait.until(EC.visibility_of_element_located((By.ID, "bulkApprovalModal")))
+                            print("   ✅ Modal appeared")
+
+                            # コメント入力（IDを使用）
+                            comment = f"組織{org_index + 1} - {approver['name']}による全承認"
+                            comment_field = driver.find_element(By.ID, "bulkComment")
+                            comment_field.send_keys(comment)
+                            print("   ✅ Comment entered")
+
+                            # 送信ボタンクリック（IDを使用）
+                            submit_btn = driver.find_element(By.ID, "bulkApprovalSubmit")
+                            submit_btn.click()
+                            print("   ✅ Submit clicked")
+                            time.sleep(5)
+
+                            # 結果確認
+                            driver.get(f"{self.base_url}/my-approvals")
                             time.sleep(3)
-                            print(f"     📍 詳細ページに移動: {driver.current_url}")
-                            
-                            try:
-                                # 承認ボタンを探す
-                                approve_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "button[onclick*='approve']")))
-                                approve_button.click()
-                                time.sleep(2)
-                                print(f"     🔘 承認ボタンをクリック")
-                                
-                                # モーダルが表示されるのを待つ
-                                modal = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".modal")))
-                                print(f"     ✅ 承認モーダルが表示されました")
-                                
-                                # コメント欄に入力
-                                comment_field = modal.find_element(By.NAME, "comment")
-                                comment_field.send_keys(f"{approver['name']}による承認 - マルチブラウザテスト")
-                                print(f"     ✅ コメントを入力")
-                                
-                                # 承認を実行
-                                submit_btn = modal.find_element(By.ID, "approvalSubmit")
-                                submit_btn.click()
-                                
-                                approved += 1
-                                time.sleep(3)
-                                print(f"     ✅ {approver['name']} approved item {i+1}")
-                                
-                                # 申請一覧に戻る
-                                driver.get(f"{self.base_url}/applications")
-                                time.sleep(3)
-                                
-                            except Exception as modal_e:
-                                print(f"     ⚠️ Modal error: {str(modal_e)[:50]}")
-                                # エラー時は申請一覧に戻る
-                                driver.get(f"{self.base_url}/applications")
-                                time.sleep(3)
-                                
+                            remaining = driver.find_elements(By.CSS_SELECTOR, ".card")
+                            approved = pending_count - len(remaining)
+                            print(f"   ✅ Approved {approved} items using 'Approve All'")
+
+                        except Exception as e:
+                            print(f"   ⚠️ Modal handling error: {str(e)[:50]}")
+
                     except Exception as e:
-                        print(f"     ⚠️ Approval {i+1} failed: {str(e)[:50]}")
-                        # エラー時は申請一覧に戻る
-                        driver.get(f"{self.base_url}/applications")
-                        time.sleep(3)
-                        continue
-            
+                        print(f"   ❌ Approve All failed: {str(e)[:50]}")
+
+            else:
+                # それ以外の組織は「選択したものを承認」を使用
+                print(f"   🎯 Organization {org_index + 1}: Using 'Selective Approval' feature")
+
+                # 承認待ちカードを確認
+                approval_cards = driver.find_elements(By.CSS_SELECTOR, ".card")
+                total_pending = len(approval_cards)
+                print(f"   📋 Found {total_pending} pending approvals")
+
+                if total_pending > 0:
+                    # 「すべて選択」チェックボックスをクリック
+                    try:
+                        print(f"   ☑️ Try to Select all items)")
+                        select_all_checkbox = driver.find_element(By.ID, "selectAll")
+                        select_all_checkbox.click()
+                        selected_count = len(driver.find_elements(By.CSS_SELECTOR, 'input[type="checkbox"][id^="approval_"]:checked'))
+                        print(f"   ☑️ Selected all approvals ({selected_count} items)")
+                        time.sleep(0.5)
+                    except Exception as e:
+                        print(f"   ❌ Failed to select all: {e}")
+                        selected_count = 0
+
+                    if selected_count > 0:
+                        print(f"   ✅ Selected {selected_count} approvals")
+
+                        # 一括承認ボタンをクリック
+                        try:
+                            # 一括承認ボタンをIDで検索してクリック
+                            bulk_approve_btn = wait.until(EC.element_to_be_clickable((By.ID, "bulkApproveBtn")))
+                            bulk_approve_btn.click()
+                            time.sleep(2)
+
+                            # モーダルを待つ
+                            try:
+                                modal = wait.until(EC.visibility_of_element_located((By.ID, "bulkApprovalModal")))
+                                print("   ✅ Bulk approval modal appeared")
+
+                                # コメント入力（IDを使用）
+                                comment = f"組織{org_index + 1} - {approver['name']}による選択承認"
+                                comment_field = driver.find_element(By.ID, "bulkComment")
+                                comment_field.send_keys(comment)
+                                print("   ✅ Comment entered")
+
+                                # 実行ボタンクリック（IDを使用）
+                                submit_btn = driver.find_element(By.ID, "bulkApprovalSubmit")
+                                submit_btn.click()
+                                print("   ✅ Submit clicked")
+                                time.sleep(5)
+
+                                approved = selected_count
+                                print(f"   ✅ Approved {approved} selected items")
+
+                            except Exception as e:
+                                print(f"   ⚠️ Modal handling error: {str(e)[:50]}")
+
+                        except Exception as e:
+                            print(f"   ❌ Bulk approve failed: {str(e)[:50]}")
+
             print(f"   ✅ {approver['name']} approved {approved} items")
-        
+
         except Exception as e:
             print(f"❌ Error during approval: {e}")
         finally:
             print(f"🚪 Closing {approver['name']}'s browser...")
             driver.quit()
-            
+
         return approved
 
     def run_test(self):
         """メインテストの実行"""
         print("🧪 Multi-Browser Approval Test")
         print("="*50)
+        print(f"🔗 Base URL: {self.base_url}")
+        print("🚀 Starting test execution...")
         
         try:
             # Phase 1: 申請者が申請作成（別ブラウザで）
@@ -292,16 +353,17 @@ class MultiBrowserApprovalTest:
             print("\\n⏳ Waiting 5 seconds between phases...")
             time.sleep(5)
             
-            # Phase 2: 各承認者が別ブラウザで承認
+            # Phase 2: 各承認者が別ブラウザで承認（組織インデックスを渡す）
             print("\\n✅ PHASE 2: Each approver uses separate browser")
             print("-"*50)
-            
+
             total_approved = 0
             for i, approver in enumerate(self.approvers):
                 print(f"\\n👤 Approver {i+1}: {approver['name']}")
-                approved = self.approve_with_user(approver)
+                # approverのインデックスを組織インデックスとして使用
+                approved = self.approve_with_user(approver, i)
                 total_approved += approved
-                
+
                 # Wait between different approvers
                 if i < len(self.approvers) - 1:
                     print("   ⏳ Waiting 3 seconds before next approver...")
@@ -315,7 +377,8 @@ class MultiBrowserApprovalTest:
             print("\\n👑 PHASE 3: Admin final approval")
             print("-"*50)
             print(f"\\n👤 Admin: {self.admin['name']}")
-            admin_approved = self.approve_with_user(self.admin)
+            # 管理者は最後の組織として扱う（通常の選択承認）
+            admin_approved = self.approve_with_user(self.admin, len(self.approvers))
             total_approved += admin_approved
             
             # Final results
