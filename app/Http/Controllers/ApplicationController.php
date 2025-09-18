@@ -12,6 +12,12 @@ class ApplicationController extends Controller
 {
     public function index(Request $request)
     {
+        Log::info('アプリケーション一覧ページアクセス', [
+            'user_id' => Auth::id(),
+            'user_role' => Auth::user()->role ?? 'unknown',
+            'filters' => $request->only(['status', 'type'])
+        ]);
+
         $query = Application::with(['applicant', 'approvals.approver']);
 
         if (Auth::user()->isAdmin()) {
@@ -35,6 +41,12 @@ class ApplicationController extends Controller
 
         $applications = $query->orderBy('created_at', 'desc')->paginate(15);
 
+        Log::info('アプリケーション一覧取得結果', [
+            'user_id' => Auth::id(),
+            'total_count' => $applications->total(),
+            'current_page_count' => $applications->count()
+        ]);
+
         return view('applications.index', compact('applications'));
     }
 
@@ -45,6 +57,12 @@ class ApplicationController extends Controller
 
     public function store(Request $request)
     {
+        Log::info('新規アプリケーション作成開始', [
+            'user_id' => Auth::id(),
+            'type' => $request->input('type'),
+            'priority' => $request->input('priority'),
+            'amount' => $request->input('amount')
+        ]);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -81,6 +99,13 @@ class ApplicationController extends Controller
 
         $application = Application::create($validated);
 
+        Log::info('アプリケーション作成完了', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'type' => $application->type,
+            'title' => $application->title
+        ]);
+
         // 承認フローを設定
         $user = Auth::user();
         if ($user && $user->organization_id) {
@@ -100,12 +125,31 @@ class ApplicationController extends Controller
             if ($approvalFlow) {
                 $application->update(['approval_flow_id' => $approvalFlow->id, 'status' => 'under_review']);
                 $approvalFlow->createApprovals($application);
-                
+
+                Log::info('承認フロー設定完了', [
+                    'application_id' => $application->id,
+                    'approval_flow_id' => $approvalFlow->id,
+                    'user_id' => Auth::id()
+                ]);
+
                 // 通知送信
                 $notificationService = new \App\Services\NotificationService();
                 $notificationService->applicationSubmitted($application);
+            } else {
+                Log::warning('承認フローが見つからない', [
+                    'application_id' => $application->id,
+                    'user_id' => Auth::id(),
+                    'organization_id' => $user->organization_id,
+                    'application_type' => $validated['type']
+                ]);
             }
         }
+
+        Log::info('アプリケーション作成処理完了', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'final_status' => $application->status
+        ]);
 
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を作成しました。');
@@ -113,6 +157,12 @@ class ApplicationController extends Controller
 
     public function show(Application $application)
     {
+        Log::info('アプリケーション詳細表示', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'application_status' => $application->status
+        ]);
+
         $this->authorize('view', $application);
 
         $application->load(['applicant', 'approvals.approver']);
@@ -134,6 +184,13 @@ class ApplicationController extends Controller
 
     public function update(Request $request, Application $application)
     {
+        Log::info('アプリケーション更新開始', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'current_status' => $application->status,
+            'update_data' => $request->only(['title', 'type', 'priority', 'amount'])
+        ]);
+
         $this->authorize('update', $application);
 
         if (!$application->canBeEdited()) {
@@ -172,6 +229,12 @@ class ApplicationController extends Controller
 
         $application->update($validated);
 
+        Log::info('アプリケーション更新完了', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'updated_fields' => array_keys($validated)
+        ]);
+
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を更新しました。');
     }
@@ -193,6 +256,12 @@ class ApplicationController extends Controller
 
     public function submit(Request $request, Application $application)
     {
+        Log::info('アプリケーション提出開始', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'current_status' => $application->status
+        ]);
+
         $this->authorize('update', $application);
 
         if (!$application->canBeSubmitted()) {
@@ -213,6 +282,13 @@ class ApplicationController extends Controller
         ]);
         $flow->createApprovals($application);
 
+        Log::info('アプリケーション提出完了', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'approval_flow_id' => $flow->id,
+            'new_status' => 'under_review'
+        ]);
+
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を提出しました。');
     }
@@ -227,6 +303,12 @@ class ApplicationController extends Controller
         }
 
         $application->cancel();
+
+        Log::info('アプリケーションキャンセル完了', [
+            'application_id' => $application->id,
+            'user_id' => Auth::id(),
+            'new_status' => 'cancelled'
+        ]);
 
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書をキャンセルしました。');

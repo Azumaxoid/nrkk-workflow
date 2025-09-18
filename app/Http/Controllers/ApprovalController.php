@@ -29,9 +29,23 @@ class ApprovalController extends Controller
     }
     public function approve(Request $request, Approval $approval)
     {
+        Log::info('承認処理開始', [
+            'approval_id' => $approval->id,
+            'user_id' => Auth::id(),
+            'application_id' => $approval->application_id,
+            'approver_id' => $approval->approver_id,
+            'current_status' => $approval->status
+        ]);
+
         $this->authorize('act', $approval);
 
         if (!$approval->isPending()) {
+            Log::warning('すでに処理済みの承認に対する操作', [
+                'approval_id' => $approval->id,
+                'user_id' => Auth::id(),
+                'current_status' => $approval->status,
+                'action' => 'approve'
+            ]);
             return redirect()->back()->with('error', 'この承認はすでに処理されています。');
         }
 
@@ -46,15 +60,36 @@ class ApprovalController extends Controller
 
         $approval->approve($commentText);
 
+        Log::info('承認処理完了', [
+            'approval_id' => $approval->id,
+            'user_id' => Auth::id(),
+            'application_id' => $approval->application_id,
+            'comment_length' => $commentText ? strlen($commentText) : 0
+        ]);
+
         return redirect()->route('applications.show', $approval->application)
             ->with('success', '申請を承認しました。');
     }
 
     public function reject(Request $request, Approval $approval)
     {
+        Log::info('却下処理開始', [
+            'approval_id' => $approval->id,
+            'user_id' => Auth::id(),
+            'application_id' => $approval->application_id,
+            'approver_id' => $approval->approver_id,
+            'current_status' => $approval->status
+        ]);
+
         $this->authorize('act', $approval);
 
         if (!$approval->isPending()) {
+            Log::warning('すでに処理済みの承認に対する操作', [
+                'approval_id' => $approval->id,
+                'user_id' => Auth::id(),
+                'current_status' => $approval->status,
+                'action' => 'reject'
+            ]);
             return redirect()->back()->with('error', 'この承認はすでに処理されています。');
         }
 
@@ -69,15 +104,36 @@ class ApprovalController extends Controller
 
         $approval->reject($c);
 
+        Log::info('却下処理完了', [
+            'approval_id' => $approval->id,
+            'user_id' => Auth::id(),
+            'application_id' => $approval->application_id,
+            'comment_length' => $c ? strlen($c) : 0
+        ]);
+
         return redirect()->route('applications.show', $approval->application)
             ->with('success', '申請を却下しました。');
     }
 
     public function skip(Request $request, Approval $approval)
     {
+        Log::info('スキップ処理開始', [
+            'approval_id' => $approval->id,
+            'user_id' => Auth::id(),
+            'application_id' => $approval->application_id,
+            'approver_id' => $approval->approver_id,
+            'current_status' => $approval->status
+        ]);
+
         $this->authorize('act', $approval);
 
         if (!$approval->isPending()) {
+            Log::warning('すでに処理済みの承認に対する操作', [
+                'approval_id' => $approval->id,
+                'user_id' => Auth::id(),
+                'current_status' => $approval->status,
+                'action' => 'skip'
+            ]);
             return redirect()->back()->with('error', 'この承認はすでに処理されています。');
         }
 
@@ -86,6 +142,13 @@ class ApprovalController extends Controller
         ]);
 
         $approval->skip($request->comment);
+
+        Log::info('スキップ処理完了', [
+            'approval_id' => $approval->id,
+            'user_id' => Auth::id(),
+            'application_id' => $approval->application_id,
+            'comment_length' => $request->comment ? strlen($request->comment) : 0
+        ]);
 
         return redirect()->route('applications.show', $approval->application)
             ->with('success', '承認をスキップしました。');

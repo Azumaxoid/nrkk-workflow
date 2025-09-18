@@ -6,6 +6,7 @@ use App\Services\NewRelicService;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -63,6 +64,16 @@ class Handler extends ExceptionHandler
      */
     public function report(Throwable $e): void
     {
+        // 例外報告開始ログ
+        Log::info('例外報告開始', [
+            'exception_class' => get_class($e),
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'user_id' => auth()->id(),
+            'url' => request()->fullUrl() ?? 'N/A'
+        ]);
+
         // AuthorizationExceptionは特別扱い（notice レベル）
         if ($e instanceof AuthorizationException) {
             $this->reportAuthorizationException($e);
@@ -81,11 +92,16 @@ class Handler extends ExceptionHandler
     protected function reportAuthorizationException(AuthorizationException $e): void
     {
         // ログレベルを notice に下げる
-        logger()->notice('Authorization failed', [
+        Log::notice('認証エラー発生', [
             'exception' => $e->getMessage(),
             'user_id' => auth()->id(),
+            'user_email' => auth()->user()->email ?? 'unknown',
             'url' => request()->fullUrl(),
+            'method' => request()->method(),
             'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine()
         ]);
     }
 
@@ -94,6 +110,11 @@ class Handler extends ExceptionHandler
      */
     protected function reportToNewRelic(Throwable $e): void
     {
+        Log::debug('New Relic報告開始', [
+            'exception_class' => get_class($e),
+            'user_id' => auth()->id()
+        ]);
+
         try {
             $errorMessage = sprintf(
                 '%s: %s (File: %s, Line: %d)',
@@ -113,11 +134,19 @@ class Handler extends ExceptionHandler
             // 追加のコンテキスト情報をNew Relicに送信
             $this->addNewRelicContext($e);
 
+            Log::info('New Relic報告完了', [
+                'exception_class' => get_class($e),
+                'user_id' => auth()->id()
+            ]);
+
         } catch (\Exception $newRelicException) {
             // New Relic への報告が失敗しても元の例外処理は継続
-            logger()->error('Failed to report to New Relic', [
+            Log::error('New Relic報告失敗', [
                 'original_exception' => $e->getMessage(),
-                'newrelic_exception' => $newRelicException->getMessage()
+                'original_exception_class' => get_class($e),
+                'newrelic_exception' => $newRelicException->getMessage(),
+                'newrelic_exception_class' => get_class($newRelicException),
+                'user_id' => auth()->id()
             ]);
         }
     }
@@ -158,19 +187,34 @@ class Handler extends ExceptionHandler
      */
     public function render($request, Throwable $e)
     {
+        Log::info('例外レンダリング開始', [
+            'exception_class' => get_class($e),
+            'message' => $e->getMessage(),
+            'user_id' => auth()->id(),
+            'url' => $request->fullUrl(),
+            'expects_json' => $request->expectsJson()
+        ]);
+
         // renderでエラーが発生した場合もNew Relicに通知
         try {
             $this->newRelicService->noticeError("Rendering exception: " . $e->getMessage(), $e);
         } catch (\Exception $noticeException) {
             // New Relic通知が失敗しても処理は継続
-            logger()->error('Failed to notice error to New Relic in render', [
+            Log::error('New Relicレンダリング通知失敗', [
                 'original_exception' => $e->getMessage(),
-                'notice_exception' => $noticeException->getMessage()
+                'original_exception_class' => get_class($e),
+                'notice_exception' => $noticeException->getMessage(),
+                'user_id' => auth()->id()
             ]);
         }
 
         // AuthorizationExceptionの場合、ユーザーフレンドリーなメッセージに変換
         if ($e instanceof AuthorizationException) {
+            Log::info('認証エラーレスポンス生成', [
+                'user_id' => auth()->id(),
+                'expects_json' => $request->expectsJson()
+            ]);
+
             if ($request->expectsJson()) {
                 return response()->json([
                     'error' => 'この操作を実行する権限がありません。',
@@ -185,6 +229,13 @@ class Handler extends ExceptionHandler
 
         // BulkApprovalExceptionの場合
         if ($e instanceof BulkApprovalException) {
+            Log::warning('一括承認エラーレスポンス生成', [
+                'approval_id' => $e->getApprovalId(),
+                'user_id' => $e->getUserId(),
+                'message' => $e->getMessage(),
+                'expects_json' => $request->expectsJson()
+            ]);
+
             if ($request->expectsJson()) {
                 return response()->json([
                     'error' => 'Bulk approval failed',
@@ -198,6 +249,11 @@ class Handler extends ExceptionHandler
                 ->with('error', $e->getMessage())
                 ->withInput();
         }
+
+        Log::info('標準例外レンダリング実行', [
+            'exception_class' => get_class($e),
+            'user_id' => auth()->id()
+        ]);
 
         return parent::render($request, $e);
     }
