@@ -57,6 +57,15 @@ class DatabaseSeeder extends Seeder
             ['name' => '岡田沙織', 'email' => 'okada.saori@wf.nrkk.technology', 'role' => 'applicant', 'org' => 8],
             ['name' => '片山健司', 'email' => 'katayama.kenji@wf.nrkk.technology', 'role' => 'applicant', 'org' => 9],
             ['name' => '川口美穂', 'email' => 'kawaguchi.miho@wf.nrkk.technology', 'role' => 'applicant', 'org' => 10],
+
+            // 新規申請者（バグテスト用） - 組織2,3,4に2名ずつ追加
+            ['name' => '小林大輔', 'email' => 'kobayashi.daisuke@wf.nrkk.technology', 'role' => 'applicant', 'org' => 2],
+            ['name' => '松田亜美', 'email' => 'matsuda.ami@wf.nrkk.technology', 'role' => 'applicant', 'org' => 2],
+            ['name' => '橋本隆司', 'email' => 'hashimoto.takashi@wf.nrkk.technology', 'role' => 'applicant', 'org' => 3],
+            ['name' => '福田麻衣', 'email' => 'fukuda.mai@wf.nrkk.technology', 'role' => 'applicant', 'org' => 3],
+            ['name' => '森田健介', 'email' => 'morita.kensuke@wf.nrkk.technology', 'role' => 'applicant', 'org' => 4],
+            ['name' => '吉田愛子', 'email' => 'yoshida.aiko@wf.nrkk.technology', 'role' => 'applicant', 'org' => 4],
+
             // 承認者
             ['name' => '中村恵子', 'email' => 'nakamura.keiko@wf.nrkk.technology', 'role' => 'approver', 'org' => 1],
             ['name' => '木村智子', 'email' => 'kimura.tomoko@wf.nrkk.technology', 'role' => 'approver', 'org' => 2],

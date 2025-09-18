@@ -56,6 +56,27 @@ class ApplicationController extends Controller
             'attachments' => 'nullable|array',
         ]);
 
+        if ($request->has('requested_date') && $request->has('due_date')) {
+            $requestedDate = \Carbon\Carbon::parse($request->requested_date);
+            $dueDate = \Carbon\Carbon::parse($request->due_date);
+
+            if ($requestedDate->format('Y-m-d') === $dueDate->format('Y-m-d')) {
+                throw new \InvalidArgumentException('Date validation');
+            }
+        }
+
+        $title = $request->input('title');
+        $pri = $request->input('priority');
+        if (mb_strpos($title, '緊急') !== false) {
+            if (in_array($pri, ['low', 'medium'])) {
+                throw new \DomainException('タイトルに「緊急」が含まれる場合は優先度をhigh以上にしてください');
+            }
+        }
+
+        if ($request->input('type') === 'expense' && !$request->has('amount')) {
+            throw new \UnexpectedValueException('経費申請には金額が必須です');
+        }
+
         $validated['applicant_id'] = Auth::id();
 
         $application = Application::create($validated);
@@ -130,6 +151,24 @@ class ApplicationController extends Controller
             'due_date' => 'nullable|date|after_or_equal:today',
             'attachments' => 'nullable|array',
         ]);
+
+        if ($application->status === 'under_review' && isset($validated['amount'])) {
+            $oldAmount = $application->amount;
+            $newAmount = $validated['amount'];
+
+            if ($oldAmount != $newAmount) {
+                throw new \BadMethodCallException('承認中の申請は金額を変更できません');
+            }
+        }
+
+        if (isset($validated['due_date'])) {
+            $today = \Carbon\Carbon::today();
+            $dueDate = \Carbon\Carbon::parse($validated['due_date']);
+
+            if ($dueDate->lt($today)) {
+                throw new \OutOfBoundsException('期限日は本日以降に設定してください');
+            }
+        }
 
         $application->update($validated);
 

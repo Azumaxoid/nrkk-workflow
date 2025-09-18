@@ -131,13 +131,13 @@ class NewRelicService
 
             // エラーグループ識別子を生成
             $groupIdentifier = sprintf(
-                '%s',
+                '%s: %s',
+                basename(str_replace('\\', '/', $exceptionClass)),
                 $maskedMessage
             );
 
             // カスタム属性としてerror.group.nameを追加
-            newrelic_add_custom_parameter('error.group.name', $exceptionClass);
-            newrelic_add_custom_parameter('error.group.message', $groupIdentifier);
+            newrelic_add_custom_parameter('error.group.name', $groupIdentifier);
 
             Log::debug('Added error.group.name via noticeError', [
                 'original' => $errorMessage,
@@ -147,9 +147,9 @@ class NewRelicService
 
             // エラーを通知
             if ($exception) {
-                newrelic_notice_error($exception->getMessage(), $exception);
+                newrelic_notice_error($maskedMessage, $exception);
             } else {
-                newrelic_notice_error($message);
+                newrelic_notice_error($maskedMessage);
             }
         } catch (\Exception $e) {
             Log::error("Failed to notice New Relic error: {$e->getMessage()}");
@@ -200,14 +200,14 @@ class NewRelicService
         // エラーグループ識別子を生成
         // 例外クラス名とマスク済みメッセージを組み合わせる
         $groupIdentifier = sprintf(
-            '%s',
+            '%s: %s',
+            basename(str_replace('\\', '/', $exceptionClass)),
             $maskedMessage
         );
 
         // カスタム属性としてerror.group.nameを追加
         try {
-            newrelic_add_custom_parameter('error.group.name', $exceptionClass);
-            newrelic_add_custom_parameter('error.group.message', $groupIdentifier);
+            newrelic_add_custom_parameter('error.group.name', $groupIdentifier);
             Log::debug('Added error.group.name custom parameter', [
                 'value' => $groupIdentifier
             ]);

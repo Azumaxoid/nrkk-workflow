@@ -158,6 +158,17 @@ class Handler extends ExceptionHandler
      */
     public function render($request, Throwable $e)
     {
+        // renderでエラーが発生した場合もNew Relicに通知
+        try {
+            $this->newRelicService->noticeError("Rendering exception: " . $e->getMessage(), $e);
+        } catch (\Exception $noticeException) {
+            // New Relic通知が失敗しても処理は継続
+            logger()->error('Failed to notice error to New Relic in render', [
+                'original_exception' => $e->getMessage(),
+                'notice_exception' => $noticeException->getMessage()
+            ]);
+        }
+
         // AuthorizationExceptionの場合、ユーザーフレンドリーなメッセージに変換
         if ($e instanceof AuthorizationException) {
             if ($request->expectsJson()) {
