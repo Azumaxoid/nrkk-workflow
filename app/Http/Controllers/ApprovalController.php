@@ -6,7 +6,6 @@ use App\Models\Approval;
 use App\Exceptions\BulkApprovalException;
 use App\Services\ApprovalAuthorizationService;
 use App\Services\ApprovalService;
-use App\Services\NewRelicService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -16,26 +15,26 @@ class ApprovalController extends Controller
 {
     protected $authorizationService;
     protected $approvalService;
-    protected $newRelicService;
 
     public function __construct(
         ApprovalAuthorizationService $authorizationService,
-        ApprovalService $approvalService,
-        NewRelicService $newRelicService
+        ApprovalService $approvalService
     ) {
         $this->authorizationService = $authorizationService;
         $this->approvalService = $approvalService;
-        $this->newRelicService = $newRelicService;
     }
     public function approve(Request $request, Approval $approval)
     {
-        Log::info('承認処理開始', [
-            'approval_id' => $approval->id,
-            'user_id' => Auth::id(),
-            'application_id' => $approval->application_id,
-            'approver_id' => $approval->approver_id,
-            'current_status' => $approval->status
-        ]);
+        Log::info(sprintf(
+            '承認処理開始 | 承認ID: %d | ユーザーID: %d | ユーザーメール: %s | アプリケーションID: %d | 承認者ID: %d | 現在ステータス: %s | URL: %s',
+            $approval->id,
+            Auth::id(),
+            Auth::user()->email ?? 'unknown',
+            $approval->application_id,
+            $approval->approver_id,
+            $approval->status,
+            request()->fullUrl() ?? 'N/A'
+        ));
 
         $this->authorize('act', $approval);
 
@@ -58,28 +57,35 @@ class ApprovalController extends Controller
             $commentText = $request->get('comment');
         }
 
-        $approval->approve($commentText);
+        // サービス層で承認処理とメトリクス記録を実行
+        $this->approvalService->processApproval($approval, $commentText);
 
-        Log::info('承認処理完了', [
-            'approval_id' => $approval->id,
-            'user_id' => Auth::id(),
-            'application_id' => $approval->application_id,
-            'comment_length' => $commentText ? strlen($commentText) : 0
-        ]);
+        Log::info(sprintf(
+            '承認処理完了 | 承認ID: %d | ユーザーID: %d | アプリケーションID: %d | コメント長: %d',
+            $approval->id,
+            Auth::id(),
+            $approval->application_id,
+            $commentText ? strlen($commentText) : 0
+        ));
 
         return redirect()->route('applications.show', $approval->application)
             ->with('success', '申請を承認しました。');
     }
 
+
+
     public function reject(Request $request, Approval $approval)
     {
-        Log::info('却下処理開始', [
-            'approval_id' => $approval->id,
-            'user_id' => Auth::id(),
-            'application_id' => $approval->application_id,
-            'approver_id' => $approval->approver_id,
-            'current_status' => $approval->status
-        ]);
+        Log::info(sprintf(
+            '却下処理開始 | 承認ID: %d | ユーザーID: %d | ユーザーメール: %s | アプリケーションID: %d | 承認者ID: %d | 現在ステータス: %s | URL: %s',
+            $approval->id,
+            Auth::id(),
+            Auth::user()->email ?? 'unknown',
+            $approval->application_id,
+            $approval->approver_id,
+            $approval->status,
+            request()->fullUrl() ?? 'N/A'
+        ));
 
         $this->authorize('act', $approval);
 
@@ -102,14 +108,16 @@ class ApprovalController extends Controller
             $c = $request->reason ?: $request->comment;
         }
 
-        $approval->reject($c);
+        // サービス層で却下処理とメトリクス記録を実行
+        $this->approvalService->processRejection($approval, $c);
 
-        Log::info('却下処理完了', [
-            'approval_id' => $approval->id,
-            'user_id' => Auth::id(),
-            'application_id' => $approval->application_id,
-            'comment_length' => $c ? strlen($c) : 0
-        ]);
+        Log::info(sprintf(
+            '却下処理完了 | 承認ID: %d | ユーザーID: %d | アプリケーションID: %d | コメント長: %d',
+            $approval->id,
+            Auth::id(),
+            $approval->application_id,
+            $c ? strlen($c) : 0
+        ));
 
         return redirect()->route('applications.show', $approval->application)
             ->with('success', '申請を却下しました。');
@@ -117,13 +125,16 @@ class ApprovalController extends Controller
 
     public function skip(Request $request, Approval $approval)
     {
-        Log::info('スキップ処理開始', [
-            'approval_id' => $approval->id,
-            'user_id' => Auth::id(),
-            'application_id' => $approval->application_id,
-            'approver_id' => $approval->approver_id,
-            'current_status' => $approval->status
-        ]);
+        Log::info(sprintf(
+            'スキップ処理開始 | 承認ID: %d | ユーザーID: %d | ユーザーメール: %s | アプリケーションID: %d | 承認者ID: %d | 現在ステータス: %s | URL: %s',
+            $approval->id,
+            Auth::id(),
+            Auth::user()->email ?? 'unknown',
+            $approval->application_id,
+            $approval->approver_id,
+            $approval->status,
+            request()->fullUrl() ?? 'N/A'
+        ));
 
         $this->authorize('act', $approval);
 
@@ -143,12 +154,13 @@ class ApprovalController extends Controller
 
         $approval->skip($request->comment);
 
-        Log::info('スキップ処理完了', [
-            'approval_id' => $approval->id,
-            'user_id' => Auth::id(),
-            'application_id' => $approval->application_id,
-            'comment_length' => $request->comment ? strlen($request->comment) : 0
-        ]);
+        Log::info(sprintf(
+            'スキップ処理完了 | 承認ID: %d | ユーザーID: %d | アプリケーションID: %d | コメント長: %d',
+            $approval->id,
+            Auth::id(),
+            $approval->application_id,
+            $request->comment ? strlen($request->comment) : 0
+        ));
 
         return redirect()->route('applications.show', $approval->application)
             ->with('success', '承認をスキップしました。');
@@ -156,6 +168,8 @@ class ApprovalController extends Controller
 
     public function bulkApprove(Request $request)
     {
+        // New Relicカスタム属性を追加
+        $this->approvalService->recordBulkApprovalMetrics($request->input('approval_ids', []), 'bulk_approve');
         $request->validate([
             'approval_ids' => 'required|array',
             'approval_ids.*' => 'exists:approvals,id',
@@ -189,11 +203,12 @@ class ApprovalController extends Controller
 
                
                 if (sizeof($ids) > 1) {
-                    Log::info('一括承認処理', [
-                        'approval_id' => $id,
-                        'user_id' => Auth::id(),
-                        'selected_count' => sizeof($ids)
-                    ]);
+                    Log::info(sprintf(
+                        '一括承認処理 | 承認ID: %s | ユーザーID: %d | 選択件数: %d',
+                        $id,
+                        Auth::id(),
+                        sizeof($ids)
+                    ));
                 } else {
                     if (!Auth::user()->can('act', $approval)) {
                         $err[] = "承認ID " . $id . ": 権限がありません。";
@@ -223,15 +238,19 @@ class ApprovalController extends Controller
                     $msg = $msg . "承認者ID: " . $approval->approver_id;
                     $msg .= ", ユーザーID: " . $u->id;
 
-                    // BulkApprovalExceptionはnoticeレベルでログ出力
-                    Log::notice($msg, [
-                        'approval_id' => $id,
-                        'user_id' => $user->id,
-                        'approver_id' => $approval->approver_id
-                    ]);
+                    // BulkApprovalExceptionはnoticeレベルでログ出力（属性情報を含める）
+                    $detailedMsg = sprintf(
+                        "%s | 承認ID: %s | ユーザーメール: %s | URL: %s | IP: %s",
+                        $msg,
+                        $id,
+                        $user->email ?? 'unknown',
+                        request()->fullUrl() ?? 'N/A',
+                        request()->ip() ?? 'N/A'
+                    );
+                    Log::notice($detailedMsg);
 
                     // New Relicにもnoticeエラーとして記録
-                    $this->newRelicService->noticeError($msg, $ex);
+                    $this->approvalService->noticeError($msg, $ex);
 
                     $err[] = "承認ID {$id}: 権限がありません。";
                     $e += 1;
@@ -239,28 +258,37 @@ class ApprovalController extends Controller
                 } catch (\Exception $newEx) {
                     // 新しいExceptionはUIまでthrow
                     $errorMsg = '予期しないエラーが発生しました';
-                    Log::error($errorMsg, [
-                        'approval_id' => $id,
-                        'user_id' => $u->id,
-                        'exception' => $newEx->getMessage()
-                    ]);
+                    $detailedErrorMsg = sprintf(
+                        '%s | 承認ID: %s | ユーザーID: %d | ユーザーメール: %s | 例外: %s | URL: %s',
+                        $errorMsg,
+                        $id,
+                        $u->id,
+                        $u->email ?? 'unknown',
+                        $newEx->getMessage(),
+                        request()->fullUrl() ?? 'N/A'
+                    );
+                    Log::error($detailedErrorMsg);
 
                     // New Relicにエラーとして記録
-                    $this->newRelicService->noticeError($errorMsg . ": " . $newEx->getMessage(), $newEx);
+                    $this->approvalService->noticeError($errorMsg . ": " . $newEx->getMessage(), $newEx);
 
                     throw $newEx;
                 }
 
-                $approval->approve($c);
+                // サービス層で一括承認項目処理とメトリクス記録を実行
+                $this->approvalService->processBulkApprovalItem($approval, $c);
                 $s = $s + 1;
                 next_item:
         }
 
-       
+
         $message = $s . "件の承認を処理しました。";
         if ($e) {
             $message = $message . " " . (string)$e . "件のエラーがありました。";
         }
+
+        // New Relicカスタムイベントを記録
+        $this->approvalService->recordBulkApprovalProcessed('BulkApprovalProcessed', count($ids), $s, $e);
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -278,6 +306,8 @@ class ApprovalController extends Controller
 
     public function bulkReject(Request $request)
     {
+        // New Relicカスタム属性を追加
+        $this->approvalService->recordBulkApprovalMetrics($request->input('approval_ids', []), 'bulk_reject');
         $request->validate([
             'approval_ids' => 'required|array',
             'approval_ids.*' => 'exists:approvals,id',
@@ -316,14 +346,19 @@ class ApprovalController extends Controller
                 } catch (AuthorizationException $e) {
                     // BulkApprovalExceptionはnoticeレベルでログ出力
                     $noticeMsg = "権限のない却下を処理しようとしました";
-                    Log::notice($noticeMsg, [
-                        'approval_id' => $id,
-                        'user_id' => Auth::id(),
-                        'exception' => $e->getMessage()
-                    ]);
+                    $detailedNoticeMsg = sprintf(
+                        "%s | 承認ID: %s | ユーザーID: %d | ユーザーメール: %s | 例外: %s | URL: %s",
+                        $noticeMsg,
+                        $id,
+                        Auth::id(),
+                        Auth::user()->email ?? 'unknown',
+                        $e->getMessage(),
+                        request()->fullUrl() ?? 'N/A'
+                    );
+                    Log::notice($detailedNoticeMsg);
 
                     // New Relicにもnoticeエラーとして記録
-                    $this->newRelicService->noticeError($noticeMsg . ": " . $e->getMessage(), $e);
+                    $this->approvalService->noticeError($noticeMsg . ": " . $e->getMessage(), $e);
 
                     $err[] = "承認ID {$id}: 権限がありません。";
                     $e = $e + 1;
@@ -331,14 +366,19 @@ class ApprovalController extends Controller
                 } catch (\Exception $newEx) {
                     // 新しいExceptionはUIまでthrow
                     $errorMsg = '予期しないエラーが発生しました';
-                    Log::error($errorMsg, [
-                        'approval_id' => $id,
-                        'user_id' => Auth::id(),
-                        'exception' => $newEx->getMessage()
-                    ]);
+                    $detailedErrorMsg = sprintf(
+                        '%s | 承認ID: %s | ユーザーID: %d | ユーザーメール: %s | 例外: %s | URL: %s',
+                        $errorMsg,
+                        $id,
+                        Auth::id(),
+                        Auth::user()->email ?? 'unknown',
+                        $newEx->getMessage(),
+                        request()->fullUrl() ?? 'N/A'
+                    );
+                    Log::error($detailedErrorMsg);
 
                     // New Relicにエラーとして記録
-                    $this->newRelicService->noticeError($errorMsg . ": " . $newEx->getMessage(), $newEx);
+                    $this->approvalService->noticeError($errorMsg . ": " . $newEx->getMessage(), $newEx);
 
                     throw $newEx;
                 }
@@ -352,17 +392,23 @@ class ApprovalController extends Controller
                     }
                 }
 
-                $approval->reject($comment);
+                // サービス層で一括却下項目処理とメトリクス記録を実行
+                $this->approvalService->processBulkRejectionItem($approval, $comment);
                 $successCount++;
 
             } catch (\Exception $generalException) {
                 // 一般的なExceptionはUIまでthrow
                 $errorMsg = '却下処理中に予期しないエラーが発生しました';
-                Log::error($errorMsg, [
-                    'approval_id' => $id,
-                    'user_id' => Auth::id(),
-                    'exception' => $generalException->getMessage()
-                ]);
+                $detailedErrorMsg = sprintf(
+                    '%s | 承認ID: %s | ユーザーID: %d | ユーザーメール: %s | 例外: %s | URL: %s',
+                    $errorMsg,
+                    $id,
+                    Auth::id(),
+                    Auth::user()->email ?? 'unknown',
+                    $generalException->getMessage(),
+                    request()->fullUrl() ?? 'N/A'
+                );
+                Log::error($detailedErrorMsg);
 
                 // New Relicにエラーとして記録
                 $this->newRelicService->noticeError($errorMsg . ": " . $generalException->getMessage(), $generalException);
@@ -394,6 +440,8 @@ class ApprovalController extends Controller
 
     public function approveAll(Request $request)
     {
+        // New Relicカスタム属性を追加
+        $this->approvalService->recordBulkApprovalMetrics([], 'approve_all');
         $request->validate([
             'comment' => 'nullable|string|max:1000',
         ]);
@@ -434,17 +482,23 @@ class ApprovalController extends Controller
                     continue;
                 }
 
-                $approval->approve($c);
+                // サービス層で承認処理とメトリクス記録を実行
+                $this->approvalService->processApproval($approval, $c);
                 $s = $s + 1;
 
             } catch (\Exception $e) {
                 // 全承認処理での一般的なExceptionはUIまでthrow（既存動作を維持）
                 $errorMsg = '全承認処理中に予期しないエラーが発生しました';
-                Log::error($errorMsg, [
-                    'approval_id' => $approval->id,
-                    'user_id' => Auth::id(),
-                    'exception' => $e->getMessage()
-                ]);
+                $detailedErrorMsg = sprintf(
+                    '%s | 承認ID: %d | ユーザーID: %d | ユーザーメール: %s | 例外: %s | URL: %s',
+                    $errorMsg,
+                    $approval->id,
+                    Auth::id(),
+                    Auth::user()->email ?? 'unknown',
+                    $e->getMessage(),
+                    request()->fullUrl() ?? 'N/A'
+                );
+                Log::error($detailedErrorMsg);
 
                 // New Relicにエラーとして記録
                 $this->newRelicService->noticeError($errorMsg . ": " . $e->getMessage(), $e);
@@ -460,6 +514,9 @@ class ApprovalController extends Controller
         if ($errorCount > 0) {
             $message .= " {$errorCount}件のエラーがありました。";
         }
+
+        // New Relicカスタムイベントを記録
+        $this->approvalService->recordBulkApprovalProcessed('ApproveAllProcessed', $totalCount, $successCount, $errorCount);
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -478,6 +535,8 @@ class ApprovalController extends Controller
 
     public function rejectAll(Request $request)
     {
+        // New Relicカスタム属性を追加
+        $this->approvalService->recordBulkApprovalMetrics([], 'reject_all');
         $request->validate([
             'comment' => 'required|string|max:1000',
         ]);
@@ -518,17 +577,23 @@ class ApprovalController extends Controller
                     continue;
                 }
 
-                $approval->reject($comment);
+                // サービス層で却下処理とメトリクス記録を実行
+                $this->approvalService->processRejection($approval, $comment);
                 $successCount++;
 
             } catch (\Exception $e) {
                 // 全却下処理での一般的なExceptionはUIまでthrow（既存動作を維持）
                 $errorMsg = '全却下処理中に予期しないエラーが発生しました';
-                Log::error($errorMsg, [
-                    'approval_id' => $approval->id,
-                    'user_id' => Auth::id(),
-                    'exception' => $e->getMessage()
-                ]);
+                $detailedErrorMsg = sprintf(
+                    '%s | 承認ID: %d | ユーザーID: %d | ユーザーメール: %s | 例外: %s | URL: %s',
+                    $errorMsg,
+                    $approval->id,
+                    Auth::id(),
+                    Auth::user()->email ?? 'unknown',
+                    $e->getMessage(),
+                    request()->fullUrl() ?? 'N/A'
+                );
+                Log::error($detailedErrorMsg);
 
                 // New Relicにエラーとして記録
                 $this->newRelicService->noticeError($errorMsg . ": " . $e->getMessage(), $e);
@@ -544,6 +609,9 @@ class ApprovalController extends Controller
         if ($errorCount > 0) {
             $message .= " {$errorCount}件のエラーがありました。";
         }
+
+        // New Relicカスタムイベントを記録
+        $this->approvalService->recordBulkApprovalProcessed('RejectAllProcessed', $totalCount, $successCount, $errorCount);
 
         if ($request->expectsJson()) {
             return response()->json([

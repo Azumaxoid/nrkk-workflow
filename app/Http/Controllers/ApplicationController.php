@@ -4,12 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\Application;
 use App\Models\ApprovalFlow;
+use App\Services\ApplicationService;
+use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class ApplicationController extends Controller
 {
+    protected $applicationService;
+
+    public function __construct(ApplicationService $applicationService)
+    {
+        $this->applicationService = $applicationService;
+    }
     public function index(Request $request)
     {
         Log::info('アプリケーション一覧ページアクセス', [
@@ -17,6 +25,7 @@ class ApplicationController extends Controller
             'user_role' => Auth::user()->role ?? 'unknown',
             'filters' => $request->only(['status', 'type'])
         ]);
+
 
         $query = Application::with(['applicant', 'approvals.approver']);
 
@@ -47,6 +56,9 @@ class ApplicationController extends Controller
             'current_page_count' => $applications->count()
         ]);
 
+        // New Relicメトリクスを記録
+        $this->applicationService->recordIndexMetrics($request, $applications);
+
         return view('applications.index', compact('applications'));
     }
 
@@ -63,6 +75,9 @@ class ApplicationController extends Controller
             'priority' => $request->input('priority'),
             'amount' => $request->input('amount')
         ]);
+
+        // New Relicカスタム属性を追加
+        $this->applicationService->recordCreateMetrics($request);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -95,61 +110,7 @@ class ApplicationController extends Controller
             throw new \UnexpectedValueException('経費申請には金額が必須です');
         }
 
-        $validated['applicant_id'] = Auth::id();
-
-        $application = Application::create($validated);
-
-        Log::info('アプリケーション作成完了', [
-            'application_id' => $application->id,
-            'user_id' => Auth::id(),
-            'type' => $application->type,
-            'title' => $application->title
-        ]);
-
-        // 承認フローを設定
-        $user = Auth::user();
-        if ($user && $user->organization_id) {
-            $approvalFlow = \App\Models\ApprovalFlow::where('organization_id', $user->organization_id)
-                ->where('application_type', $validated['type'])
-                ->where('is_active', true)
-                ->first();
-            
-            if (!$approvalFlow) {
-                // デフォルトの承認フロー（otherタイプ）を使用
-                $approvalFlow = \App\Models\ApprovalFlow::where('organization_id', $user->organization_id)
-                    ->where('application_type', 'other')
-                    ->where('is_active', true)
-                    ->first();
-            }
-            
-            if ($approvalFlow) {
-                $application->update(['approval_flow_id' => $approvalFlow->id, 'status' => 'under_review']);
-                $approvalFlow->createApprovals($application);
-
-                Log::info('承認フロー設定完了', [
-                    'application_id' => $application->id,
-                    'approval_flow_id' => $approvalFlow->id,
-                    'user_id' => Auth::id()
-                ]);
-
-                // 通知送信
-                $notificationService = new \App\Services\NotificationService();
-                $notificationService->applicationSubmitted($application);
-            } else {
-                Log::warning('承認フローが見つからない', [
-                    'application_id' => $application->id,
-                    'user_id' => Auth::id(),
-                    'organization_id' => $user->organization_id,
-                    'application_type' => $validated['type']
-                ]);
-            }
-        }
-
-        Log::info('アプリケーション作成処理完了', [
-            'application_id' => $application->id,
-            'user_id' => Auth::id(),
-            'final_status' => $application->status
-        ]);
+        $application = $this->applicationService->createApplication($validated);
 
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を作成しました。');
@@ -162,6 +123,9 @@ class ApplicationController extends Controller
             'user_id' => Auth::id(),
             'application_status' => $application->status
         ]);
+
+        // New Relicカスタム属性を追加
+        $this->applicationService->recordShowMetrics($application);
 
         $this->authorize('view', $application);
 
@@ -190,6 +154,9 @@ class ApplicationController extends Controller
             'current_status' => $application->status,
             'update_data' => $request->only(['title', 'type', 'priority', 'amount'])
         ]);
+
+        // New Relicカスタム属性を追加
+        $this->applicationService->recordUpdateMetrics($application);
 
         $this->authorize('update', $application);
 
@@ -235,6 +202,9 @@ class ApplicationController extends Controller
             'updated_fields' => array_keys($validated)
         ]);
 
+        // New Relicカスタムイベントを記録
+        $this->applicationService->recordApplicationUpdated($application, $validated);
+
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を更新しました。');
     }
@@ -262,6 +232,9 @@ class ApplicationController extends Controller
             'current_status' => $application->status
         ]);
 
+        // New Relicカスタム属性を追加
+        $this->applicationService->recordSubmitMetrics($application);
+
         $this->authorize('update', $application);
 
         if (!$application->canBeSubmitted()) {
@@ -269,25 +242,12 @@ class ApplicationController extends Controller
                 ->with('error', 'この申請書は提出できません。');
         }
 
-        $flow = ApprovalFlow::findBestMatch($application);
-        if (!$flow) {
+        try {
+            $flow = $this->applicationService->submitApplication($application);
+        } catch (\Exception $e) {
             return redirect()->route('applications.show', $application)
-                ->with('error', '承認フローが見つかりません。管理者にお問い合わせください。');
+                ->with('error', $e->getMessage());
         }
-
-        $application->submit();
-        $application->update([
-            'status' => 'under_review',
-            'approval_flow_id' => $flow->id
-        ]);
-        $flow->createApprovals($application);
-
-        Log::info('アプリケーション提出完了', [
-            'application_id' => $application->id,
-            'user_id' => Auth::id(),
-            'approval_flow_id' => $flow->id,
-            'new_status' => 'under_review'
-        ]);
 
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を提出しました。');
@@ -364,6 +324,9 @@ class ApplicationController extends Controller
             'authorized_approvals' => $authorizedApprovals->count(),
             'displayed_approvals' => $paginatedApprovals->count(),
         ]);
+
+        // New Relicメトリクスを記録
+        $this->applicationService->recordMyApprovalsMetrics($allApprovals, $authorizedApprovals, $paginatedApprovals, $queryCount);
 
         return view('applications.my-approvals', compact('approvals'));
     }

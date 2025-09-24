@@ -5,21 +5,40 @@ namespace App\Http\Controllers;
 use App\Models\Application;
 use App\Models\Approval;
 use App\Services\ApprovalService;
+use App\Services\DashboardService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
     protected $approvalService;
+    protected $dashboardService;
 
-    public function __construct(ApprovalService $approvalService)
-    {
+    public function __construct(
+        ApprovalService $approvalService,
+        DashboardService $dashboardService
+    ) {
         $this->approvalService = $approvalService;
+        $this->dashboardService = $dashboardService;
     }
     public function index()
     {
         $user = Auth::user();
+
+        // ユーザーログイン後の組織情報をログに記録（ダッシュボードアクセス時に1度だけ）
+        Log::info(sprintf(
+            'ダッシュボードアクセス | ユーザーID: %d | ユーザーメール: %s | 組織ID: %s | ロール: %s | ユーザーエージェント: %s',
+            $user->id,
+            $user->email ?? 'unknown',
+            $user->organization_id ?? 'N/A',
+            $user->role ?? 'unknown',
+            request()->userAgent() ?? 'unknown'
+        ));
+
+        // New Relicカスタム属性を追加
+        $this->dashboardService->recordDashboardAccess($user);
         
         $stats = [
             'my_applications' => 0,
@@ -85,6 +104,9 @@ class DashboardController extends Controller
                 ->orderBy('month')
                 ->get();
         }
+
+        // New Relicメトリクスを記録
+        $this->dashboardService->recordDashboardStats($stats, $user);
 
         return view('dashboard', compact('stats', 'recentApplications', 'pendingApprovals', 'monthlyStats'));
     }

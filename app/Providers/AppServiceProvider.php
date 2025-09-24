@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Services\ApprovalService;
+use App\Services\NewRelicService;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -14,7 +15,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // ApprovalServiceをシングルトンとして登録
         $this->app->singleton(ApprovalService::class, function ($app) {
-            return new ApprovalService();
+            return new ApprovalService($app->make(NewRelicService::class));
         });
     }
 

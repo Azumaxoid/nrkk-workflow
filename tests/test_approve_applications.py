@@ -423,14 +423,10 @@ def test_approve_applications():
 
         except Exception as e:
             print(f"❌ Error for {approver['name']}: {e}")
-            method = 'reject_all' if approver.get('use_reject_all', False) else \
-                     'combination_bugs' if approver.get('test_combination_bugs', False) else \
-                     'approve_all' if approver['use_approve_all'] else 'selective'
-
             approval_results.append({
                 'approver': approver['name'],
                 'org': approver['org'],
-                'method': method,
+                'method': 'approve_all' if approver['use_approve_all'] else 'selective',
                 'approved_count': 0,
                 'error': str(e)
             })
@@ -453,14 +449,10 @@ def test_approve_applications():
     # 承認方法別の統計
     approve_all_count = sum(1 for r in approval_results if r['method'] == 'approve_all')
     selective_count = sum(1 for r in approval_results if r['method'] == 'selective')
-    reject_all_count = sum(1 for r in approval_results if r['method'] == 'reject_all')
-    combination_bugs_count = sum(1 for r in approval_results if r['method'] == 'combination_bugs')
 
     print(f"\n📊 Approval Methods:")
-    print(f"   Approve All: {approve_all_count} approvers")
+    print(f"   Approve All: {approve_all_count} approvers (Org 2, 5)")
     print(f"   Selective: {selective_count} approvers")
-    print(f"   Reject All (bug test): {reject_all_count} approvers")
-    print(f"   Combination Bugs Test: {combination_bugs_count} approvers")
 
     # 組織別の統計
     print(f"\n📊 Approvals by Organization:")
