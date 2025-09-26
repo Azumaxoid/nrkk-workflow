@@ -133,7 +133,7 @@ class ApplicationController extends Controller
                 ]);
 
                 // 通知送信
-                $notificationService = new \App\Services\NotificationService();
+                $notificationService = app(\App\Services\NotificationService::class);
                 $notificationService->applicationSubmitted($application);
             } else {
                 Log::warning('承認フローが見つからない', [

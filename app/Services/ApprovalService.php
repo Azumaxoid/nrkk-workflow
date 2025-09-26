@@ -3,11 +3,18 @@
 namespace App\Services;
 
 use App\Models\Approval;
+use App\Services\NewRelicService;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Log;
 
 class ApprovalService
 {
+    protected $newRelicService;
+
+    public function __construct(NewRelicService $newRelicService)
+    {
+        $this->newRelicService = $newRelicService;
+    }
     /**
      * 申請書を取得（汎用メソッド）
      *
@@ -23,6 +30,9 @@ class ApprovalService
     public function getApprovals(array $filters = []): Collection
     {
         Log::debug('Getting approvals', ['filters' => $filters]);
+
+        // New Relicメトリクス記録
+        $this->recordApprovalQueryMetrics('get_approvals', $filters);
 
         $query = Approval::query();
 
@@ -62,7 +72,12 @@ class ApprovalService
             $query->orderBy($filters['order_by'], $direction);
         }
 
-        return $query->get();
+        $results = $query->get();
+
+        // 結果をNew Relicに記録
+        $this->recordApprovalQueryResult(count($results), $filters);
+
+        return $results;
     }
 
     /**
@@ -115,6 +130,9 @@ class ApprovalService
             'per_page' => $perPage
         ]);
 
+        // New Relicメトリクス記録
+        $this->recordApprovalQueryMetrics('get_approvals_paginated', $filters, $perPage);
+
         $query = Approval::query();
 
         // ID指定
@@ -155,7 +173,12 @@ class ApprovalService
             $query->orderBy('created_at', 'desc');
         }
 
-        return $query->paginate($perPage);
+        $results = $query->paginate($perPage);
+
+        // 結果をNew Relicに記録
+        $this->recordApprovalPaginationResult($results, $filters);
+
+        return $results;
     }
 
     /**
@@ -169,13 +192,29 @@ class ApprovalService
     {
         Log::debug('Finding approval', ['id' => $id, 'with' => $with]);
 
+        // New Relicメトリクス記録
+        $this->newRelicService->addCustomParameter('approval.action', 'find');
+        $this->newRelicService->addCustomParameter('approval.id', $id);
+        $this->newRelicService->addCustomParameter('approval.with_relations', !empty($with));
+        if (!empty($with)) {
+            $this->newRelicService->addCustomParameter('approval.relations', implode(',', $with));
+        }
+
         $query = Approval::query();
 
         if (!empty($with)) {
             $query->with($with);
         }
 
-        return $query->find($id);
+        $result = $query->find($id);
+
+        // 結果をNew Relicに記録
+        $this->newRelicService->addCustomParameter('approval.found', $result !== null);
+        if ($result) {
+            $this->newRelicService->addCustomParameter('approval.status', $result->status);
+        }
+
+        return $result;
     }
 
     /**
@@ -224,5 +263,78 @@ class ApprovalService
     public function getApprovalsByIds(array $ids): Collection
     {
         return $this->getApprovals(['ids' => $ids]);
+    }
+
+    /**
+     * 承認クエリのメトリクスをNew Relicに記録
+     */
+    protected function recordApprovalQueryMetrics(string $method, array $filters, ?int $perPage = null): void
+    {
+        $this->newRelicService->addCustomParameter('approval.action', $method);
+        $this->newRelicService->addCustomParameter('approval.filters.count', count($filters));
+
+        // フィルター詳細
+        if (isset($filters['status'])) {
+            $this->newRelicService->addCustomParameter('approval.filter.status', $filters['status']);
+        }
+        if (isset($filters['user_id'])) {
+            $this->newRelicService->addCustomParameter('approval.filter.user_id', $filters['user_id']);
+        }
+        if (isset($filters['approver_id'])) {
+            $this->newRelicService->addCustomParameter('approval.filter.approver_id', $filters['approver_id']);
+        }
+        if (isset($filters['application_id'])) {
+            $this->newRelicService->addCustomParameter('approval.filter.application_id', $filters['application_id']);
+        }
+        if (isset($filters['ids'])) {
+            $this->newRelicService->addCustomParameter('approval.filter.ids_count', count($filters['ids']));
+        }
+        if (isset($filters['with'])) {
+            $this->newRelicService->addCustomParameter('approval.with_relations', implode(',', $filters['with']));
+        }
+
+        // ページネーション情報
+        if ($perPage) {
+            $this->newRelicService->addCustomParameter('approval.per_page', $perPage);
+        }
+    }
+
+    /**
+     * 承認クエリ結果をNew Relicに記録
+     */
+    protected function recordApprovalQueryResult(int $count, array $filters): void
+    {
+        $this->newRelicService->addCustomParameter('approval.result.count', $count);
+        $this->newRelicService->recordMetric('ApprovalQueryResultCount', $count);
+
+        // ステータス別のメトリクス
+        if (isset($filters['status'])) {
+            $this->newRelicService->recordMetric('ApprovalQuery_' . ucfirst($filters['status']), $count);
+        }
+    }
+
+    /**
+     * 承認ページネーション結果をNew Relicに記録
+     */
+    protected function recordApprovalPaginationResult($results, array $filters): void
+    {
+        $this->newRelicService->addCustomParameter('approval.pagination.total', $results->total());
+        $this->newRelicService->addCustomParameter('approval.pagination.per_page', $results->perPage());
+        $this->newRelicService->addCustomParameter('approval.pagination.current_page', $results->currentPage());
+        $this->newRelicService->addCustomParameter('approval.pagination.last_page', $results->lastPage());
+        $this->newRelicService->addCustomParameter('approval.pagination.count', $results->count());
+
+        // メトリクス記録
+        $this->newRelicService->recordMetric('ApprovalPaginationTotal', $results->total());
+        $this->newRelicService->recordMetric('ApprovalPaginationCount', $results->count());
+
+        // カスタムイベント記録
+        $this->newRelicService->recordCustomEvent('ApprovalQuery', [
+            'method' => 'paginated',
+            'total_count' => $results->total(),
+            'page_count' => $results->count(),
+            'current_page' => $results->currentPage(),
+            'filters' => json_encode(array_keys($filters))
+        ]);
     }
 }

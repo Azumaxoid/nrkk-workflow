@@ -7,6 +7,7 @@ use App\Models\NotificationSetting;
 use App\Models\NotificationLog;
 use App\Models\Application;
 use App\Models\Approval;
+use App\Services\NewRelicService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -14,8 +15,18 @@ use App\Mail\ApplicationNotificationMail;
 
 class NotificationService
 {
+    protected $newRelicService;
+
+    public function __construct(NewRelicService $newRelicService)
+    {
+        $this->newRelicService = $newRelicService;
+    }
+
     public function sendNotificationToChannel($user, $channel, $eventType, $title, $message, $data = null)
     {
+        // New Relicメトリクス記録
+        $this->recordNotificationMetrics('single_channel', $channel, $eventType, $user);
+
         // 特定のチャンネルだけに送信
         $log = NotificationLog::create([
             'user_id' => $user->id,
@@ -27,15 +38,25 @@ class NotificationService
             'status' => 'pending',
         ]);
 
-        return $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
+        $result = $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
+
+        // 送信結果をNew Relicに記録
+        $this->recordNotificationResult($result, $channel, $eventType);
+
+        return $result;
     }
 
     public function sendNotification($userId, $eventType, $title, $message, $data = null)
     {
         $user = User::find($userId);
         if (!$user) {
+            $this->newRelicService->addCustomParameter('notification.error', 'user_not_found');
+            $this->newRelicService->addCustomParameter('notification.user_id', $userId);
             return false;
         }
+
+        // New Relicメトリクス記録
+        $this->recordNotificationMetrics('multi_channel', null, $eventType, $user);
 
         $settings = $user->notificationSettings()
             ->forEvent($eventType)
@@ -49,15 +70,25 @@ class NotificationService
                 ->forEvent($eventType)
                 ->enabled()
                 ->get();
+            $this->newRelicService->addCustomParameter('notification.default_settings_created', true);
         }
 
         $results = [];
+        $channelCount = 0;
         foreach ($settings as $setting) {
             foreach ($setting->channels as $channel) {
                 $result = $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
                 $results[$channel] = $result;
+                $channelCount++;
+
+                // 各チャンネル結果をNew Relicに記録
+                $this->recordNotificationResult($result, $channel, $eventType);
             }
         }
+
+        // 総合メトリクス記録
+        $this->newRelicService->addCustomParameter('notification.total_channels', $channelCount);
+        $this->newRelicService->recordMetric('NotificationChannelCount', $channelCount);
 
         return $results;
     }
@@ -289,11 +320,64 @@ class NotificationService
     public function markAsRead($userId, $notificationId = null)
     {
         $query = NotificationLog::forUser($userId)->ofType('database');
-        
+
         if ($notificationId) {
             $query->where('id', $notificationId);
         }
-        
-        return $query->unread()->update(['read_at' => now()]);
+
+        $readCount = $query->unread()->update(['read_at' => now()]);
+
+        // New Relicメトリクス記録
+        $this->newRelicService->addCustomParameter('notification.action', 'mark_as_read');
+        $this->newRelicService->addCustomParameter('notification.user_id', $userId);
+        $this->newRelicService->addCustomParameter('notification.read_count', $readCount);
+        if ($notificationId) {
+            $this->newRelicService->addCustomParameter('notification.specific_id', $notificationId);
+        }
+        $this->newRelicService->recordMetric('NotificationMarkReadCount', $readCount);
+
+        return $readCount;
+    }
+
+    /**
+     * 通知メトリクスをNew Relicに記録
+     */
+    protected function recordNotificationMetrics(string $type, ?string $channel, string $eventType, User $user): void
+    {
+        $this->newRelicService->addCustomParameter('notification.action', 'send');
+        $this->newRelicService->addCustomParameter('notification.type', $type);
+        $this->newRelicService->addCustomParameter('notification.event_type', $eventType);
+        $this->newRelicService->addCustomParameter('notification.user_id', $user->id);
+        $this->newRelicService->addCustomParameter('notification.user_organization_id', $user->organization_id ?? 'none');
+
+        if ($channel) {
+            $this->newRelicService->addCustomParameter('notification.channel', $channel);
+        }
+
+        // 組織情報があれば追加
+        if ($user->organization) {
+            $this->newRelicService->addCustomParameter('notification.organization_name', $user->organization->name);
+            $this->newRelicService->addCustomParameter('notification.organization_type', $user->organization->type ?? 'unknown');
+        }
+    }
+
+    /**
+     * 通知送信結果をNew Relicに記録
+     */
+    protected function recordNotificationResult(bool $result, string $channel, string $eventType): void
+    {
+        $this->newRelicService->addCustomParameter("notification.result.{$channel}", $result ? 'success' : 'failed');
+
+        // カスタムイベント記録
+        $this->newRelicService->recordCustomEvent('NotificationSent', [
+            'channel' => $channel,
+            'event_type' => $eventType,
+            'success' => $result,
+            'timestamp' => now()->toISOString()
+        ]);
+
+        // メトリクス記録
+        $metricName = $result ? 'NotificationSuccess' : 'NotificationFailure';
+        $this->newRelicService->recordMetric($metricName . '_' . ucfirst($channel), 1);
     }
 }
