@@ -28,20 +28,25 @@ class DatabaseSeeder extends Seeder
 
         $createdOrganizations = [];
         foreach ($organizations as $orgData) {
-            $createdOrganizations[] = Organization::create($orgData);
+            $createdOrganizations[] = Organization::updateOrCreate(
+                ['code' => $orgData['code']],
+                $orgData
+            );
         }
 
         // Create admin user
-        $admin = User::create([
-            'name' => '管理者',
-            'email' => 'admin@wf.nrkk.technology',
-            'password' => Hash::make('password'),
-            'role' => 'admin',
-            'department' => '管理部',
-            'position' => '管理者',
-            'organization_id' => $createdOrganizations[0]->id,
-            'notification_preferences' => ['email'],
-        ]);
+        $admin = User::updateOrCreate(
+            ['email' => 'admin@wf.nrkk.technology'],
+            [
+                'name' => '管理者',
+                'password' => Hash::make('password'),
+                'role' => 'admin',
+                'department' => '管理部',
+                'position' => '管理者',
+                'organization_id' => $createdOrganizations[0]->id,
+                'notification_preferences' => ['email'],
+            ]
+        );
 
         // テスト用ユーザー（各組織に1人ずつ）
         $testUsers = [
@@ -95,7 +100,10 @@ class DatabaseSeeder extends Seeder
                 'notification_preferences' => ['email'],
             ];
 
-            $user = User::create($userData);
+            $user = User::updateOrCreate(
+                ['email' => $userData['email']],
+                $userData
+            );
 
             if ($testUser['role'] === 'approver') {
                 $createdApprovers[] = ['user' => $user, 'org' => $organization];

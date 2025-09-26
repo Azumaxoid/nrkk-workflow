@@ -159,6 +159,11 @@ class Handler extends ExceptionHandler
      */
     protected function addNewRelicContext(Throwable $e): void
     {
+        // New Relic拡張が利用可能な場合のみ実行
+        if (!function_exists('newrelic_add_custom_parameter')) {
+            return;
+        }
+
         // リクエスト情報
         if (app()->bound('request') && request()) {
             newrelic_add_custom_parameter('request.url', request()->fullUrl());
