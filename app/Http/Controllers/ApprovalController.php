@@ -411,7 +411,6 @@ class ApprovalController extends Controller
                 Log::error($detailedErrorMsg);
 
                 // New Relicにエラーとして記録
-                $this->newRelicService->noticeError($errorMsg . ": " . $generalException->getMessage(), $generalException);
 
                 throw $generalException;
             }
@@ -501,7 +500,6 @@ class ApprovalController extends Controller
                 Log::error($detailedErrorMsg);
 
                 // New Relicにエラーとして記録
-                $this->newRelicService->noticeError($errorMsg . ": " . $e->getMessage(), $e);
 
                 $errors[] = "承認ID {$approval->id}: エラーが発生しました。";
                 $errorCount++;
@@ -596,7 +594,6 @@ class ApprovalController extends Controller
                 Log::error($detailedErrorMsg);
 
                 // New Relicにエラーとして記録
-                $this->newRelicService->noticeError($errorMsg . ": " . $e->getMessage(), $e);
 
                 $errors[] = "承認ID {$approval->id}: エラーが発生しました。";
                 $errorCount++;

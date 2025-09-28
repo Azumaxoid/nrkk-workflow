@@ -2,7 +2,6 @@
 
 namespace App\Exceptions;
 
-use App\Services\NewRelicService;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
@@ -11,7 +10,6 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
-    protected $newRelicService;
 
     /**
      * A list of exception types with their corresponding custom log levels.
@@ -45,7 +43,6 @@ class Handler extends ExceptionHandler
     public function __construct()
     {
         parent::__construct(app());
-        $this->newRelicService = app(NewRelicService::class);
     }
 
     /**
@@ -53,10 +50,7 @@ class Handler extends ExceptionHandler
      */
     public function register(): void
     {
-        $this->reportable(function (Throwable $e) {
-            // 全ての例外をNew Relicに報告
-            $this->reportToNewRelic($e);
-        });
+        //
     }
 
     /**
@@ -83,8 +77,6 @@ class Handler extends ExceptionHandler
             parent::report($e);
         }
 
-        // New Relicに報告
-        $this->reportToNewRelic($e);
     }
 
     /**

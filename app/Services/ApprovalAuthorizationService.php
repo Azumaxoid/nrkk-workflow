@@ -4,16 +4,13 @@ namespace App\Services;
 
 use App\Models\Approval;
 use App\Models\User;
-use App\Services\NewRelicService;
 use Illuminate\Auth\Access\AuthorizationException;
 
 class ApprovalAuthorizationService
 {
-    protected $newRelicService;
-
     public function __construct()
     {
-        $this->newRelicService = app(NewRelicService::class);
+        //
     }
 
     /**
@@ -30,7 +27,6 @@ class ApprovalAuthorizationService
             $exception = new AuthorizationException($errorMessage);
 
             // New Relicにエラーを記録（例外インスタンスを渡す）
-            $this->newRelicService->noticeError($errorMessage, $exception);
 
             // 認可失敗のメトリクス記録
             $this->recordAuthorizationFailure('single', $user, $approval);
@@ -79,7 +75,6 @@ class ApprovalAuthorizationService
             $exception = new AuthorizationException($errorMessage);
 
             // New Relicにエラーを記録（例外インスタンスを渡す）
-            $this->newRelicService->noticeError($errorMessage, $exception);
 
             // 一括認可失敗のメトリクス記録
             $this->recordBulkAuthorizationFailure($user, $approvalIds, $unauthorizedApprovals);
@@ -157,13 +152,6 @@ class ApprovalAuthorizationService
      */
     protected function recordAuthorizationAttempt(string $type, User $user, Approval $approval): void
     {
-        $this->newRelicService->addCustomParameter('authorization.action', 'attempt');
-        $this->newRelicService->addCustomParameter('authorization.type', $type);
-        $this->newRelicService->addCustomParameter('authorization.user_id', $user->id);
-        $this->newRelicService->addCustomParameter('authorization.approval_id', $approval->id);
-        $this->newRelicService->addCustomParameter('authorization.approval_status', $approval->status);
-        $this->newRelicService->addCustomParameter('authorization.approver_id', $approval->approver_id);
-        $this->newRelicService->addCustomParameter('authorization.user_organization_id', $user->organization_id ?? 'none');
     }
 
     /**
@@ -171,16 +159,7 @@ class ApprovalAuthorizationService
      */
     protected function recordAuthorizationSuccess(string $type, User $user, Approval $approval): void
     {
-        $this->newRelicService->addCustomParameter('authorization.result', 'success');
-        $this->newRelicService->recordMetric('AuthorizationSuccess', 1);
-
-        $this->newRelicService->recordCustomEvent('AuthorizationSuccess', [
-            'type' => $type,
-            'user_id' => $user->id,
-            'approval_id' => $approval->id,
-            'approval_status' => $approval->status,
-            'organization_id' => $user->organization_id ?? null
-        ]);
+        // New Relic記録メソッドは削除済み
     }
 
     /**
@@ -188,19 +167,7 @@ class ApprovalAuthorizationService
      */
     protected function recordAuthorizationFailure(string $type, User $user, Approval $approval): void
     {
-        $this->newRelicService->addCustomParameter('authorization.result', 'failure');
-        $this->newRelicService->addCustomParameter('authorization.failure_reason', 'unauthorized');
-        $this->newRelicService->recordMetric('AuthorizationFailure', 1);
-
-        $this->newRelicService->recordCustomEvent('AuthorizationFailure', [
-            'type' => $type,
-            'user_id' => $user->id,
-            'approval_id' => $approval->id,
-            'approval_status' => $approval->status,
-            'approver_id' => $approval->approver_id,
-            'organization_id' => $user->organization_id ?? null,
-            'reason' => 'unauthorized'
-        ]);
+        // New Relic記録メソッドは削除済み
     }
 
     /**
@@ -208,11 +175,7 @@ class ApprovalAuthorizationService
      */
     protected function recordBulkAuthorizationAttempt(User $user, array $approvalIds): void
     {
-        $this->newRelicService->addCustomParameter('authorization.action', 'bulk_attempt');
-        $this->newRelicService->addCustomParameter('authorization.user_id', $user->id);
-        $this->newRelicService->addCustomParameter('authorization.approval_count', count($approvalIds));
-        $this->newRelicService->addCustomParameter('authorization.user_organization_id', $user->organization_id ?? 'none');
-        $this->newRelicService->recordMetric('BulkAuthorizationAttempt', count($approvalIds));
+        // New Relic記録メソッドは削除済み
     }
 
     /**
@@ -220,15 +183,7 @@ class ApprovalAuthorizationService
      */
     protected function recordBulkAuthorizationSuccess(User $user, array $approvalIds): void
     {
-        $this->newRelicService->addCustomParameter('authorization.result', 'success');
-        $this->newRelicService->addCustomParameter('authorization.success_count', count($approvalIds));
-        $this->newRelicService->recordMetric('BulkAuthorizationSuccess', count($approvalIds));
-
-        $this->newRelicService->recordCustomEvent('BulkAuthorizationSuccess', [
-            'user_id' => $user->id,
-            'approval_count' => count($approvalIds),
-            'organization_id' => $user->organization_id ?? null
-        ]);
+        // New Relic記録メソッドは削除済み
     }
 
     /**
@@ -236,17 +191,6 @@ class ApprovalAuthorizationService
      */
     protected function recordBulkAuthorizationFailure(User $user, array $approvalIds, array $unauthorizedApprovals): void
     {
-        $this->newRelicService->addCustomParameter('authorization.result', 'failure');
-        $this->newRelicService->addCustomParameter('authorization.total_count', count($approvalIds));
-        $this->newRelicService->addCustomParameter('authorization.unauthorized_count', count($unauthorizedApprovals));
-        $this->newRelicService->addCustomParameter('authorization.authorized_count', count($approvalIds) - count($unauthorizedApprovals));
-        $this->newRelicService->recordMetric('BulkAuthorizationFailure', count($unauthorizedApprovals));
-
-        $this->newRelicService->recordCustomEvent('BulkAuthorizationFailure', [
-            'user_id' => $user->id,
-            'total_count' => count($approvalIds),
-            'unauthorized_count' => count($unauthorizedApprovals),
-            'organization_id' => $user->organization_id ?? null
-        ]);
+        // New Relic記録メソッドは削除済み
     }
 }
