@@ -168,8 +168,6 @@ class ApprovalController extends Controller
 
     public function bulkApprove(Request $request)
     {
-        // New Relicカスタム属性を追加
-        $this->approvalService->recordBulkApprovalMetrics($request->input('approval_ids', []), 'bulk_approve');
         $request->validate([
             'approval_ids' => 'required|array',
             'approval_ids.*' => 'exists:approvals,id',
@@ -233,6 +231,7 @@ class ApprovalController extends Controller
                     $user = auth()->user();
                     $this->authorizationService->authorizeApprovalAction($u, $approval);
                 } catch (AuthorizationException $ex) {
+                    newrelic_notice_error('Authorization error in bulk approval', $ex);
 
                     $msg = "権限のない承認を処理しようとしました。";
                     $msg = $msg . "承認者ID: " . $approval->approver_id;
@@ -249,13 +248,12 @@ class ApprovalController extends Controller
                     );
                     Log::notice($detailedMsg);
 
-                    // New Relicにもnoticeエラーとして記録
-                    $this->approvalService->noticeError($msg, $ex);
 
                     $err[] = "承認ID {$id}: 権限がありません。";
                     $e += 1;
                     continue;
                 } catch (\Exception $newEx) {
+                    newrelic_notice_error('Unexpected error in bulk approval', $newEx);
                     // 新しいExceptionはUIまでthrow
                     $errorMsg = '予期しないエラーが発生しました';
                     $detailedErrorMsg = sprintf(
@@ -269,8 +267,6 @@ class ApprovalController extends Controller
                     );
                     Log::error($detailedErrorMsg);
 
-                    // New Relicにエラーとして記録
-                    $this->approvalService->noticeError($errorMsg . ": " . $newEx->getMessage(), $newEx);
 
                     throw $newEx;
                 }
@@ -287,8 +283,6 @@ class ApprovalController extends Controller
             $message = $message . " " . (string)$e . "件のエラーがありました。";
         }
 
-        // New Relicカスタムイベントを記録
-        $this->approvalService->recordBulkApprovalProcessed('BulkApprovalProcessed', count($ids), $s, $e);
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -306,8 +300,6 @@ class ApprovalController extends Controller
 
     public function bulkReject(Request $request)
     {
-        // New Relicカスタム属性を追加
-        $this->approvalService->recordBulkApprovalMetrics($request->input('approval_ids', []), 'bulk_reject');
         $request->validate([
             'approval_ids' => 'required|array',
             'approval_ids.*' => 'exists:approvals,id',
@@ -344,6 +336,7 @@ class ApprovalController extends Controller
                 try {
                     $this->authorizationService->authorizeApprovalAction(Auth::user(), $approval);
                 } catch (AuthorizationException $e) {
+                    newrelic_notice_error('Authorization error in bulk rejection', $e);
                     // BulkApprovalExceptionはnoticeレベルでログ出力
                     $noticeMsg = "権限のない却下を処理しようとしました";
                     $detailedNoticeMsg = sprintf(
@@ -357,13 +350,12 @@ class ApprovalController extends Controller
                     );
                     Log::notice($detailedNoticeMsg);
 
-                    // New Relicにもnoticeエラーとして記録
-                    $this->approvalService->noticeError($noticeMsg . ": " . $e->getMessage(), $e);
 
                     $err[] = "承認ID {$id}: 権限がありません。";
                     $e = $e + 1;
                     continue;
                 } catch (\Exception $newEx) {
+                    newrelic_notice_error('Unexpected error in bulk rejection', $newEx);
                     // 新しいExceptionはUIまでthrow
                     $errorMsg = '予期しないエラーが発生しました';
                     $detailedErrorMsg = sprintf(
@@ -377,8 +369,6 @@ class ApprovalController extends Controller
                     );
                     Log::error($detailedErrorMsg);
 
-                    // New Relicにエラーとして記録
-                    $this->approvalService->noticeError($errorMsg . ": " . $newEx->getMessage(), $newEx);
 
                     throw $newEx;
                 }
@@ -397,6 +387,7 @@ class ApprovalController extends Controller
                 $successCount++;
 
             } catch (\Exception $generalException) {
+                newrelic_notice_error('General error in bulk rejection process', $generalException);
                 // 一般的なExceptionはUIまでthrow
                 $errorMsg = '却下処理中に予期しないエラーが発生しました';
                 $detailedErrorMsg = sprintf(
@@ -410,7 +401,6 @@ class ApprovalController extends Controller
                 );
                 Log::error($detailedErrorMsg);
 
-                // New Relicにエラーとして記録
 
                 throw $generalException;
             }
@@ -439,8 +429,6 @@ class ApprovalController extends Controller
 
     public function approveAll(Request $request)
     {
-        // New Relicカスタム属性を追加
-        $this->approvalService->recordBulkApprovalMetrics([], 'approve_all');
         $request->validate([
             'comment' => 'nullable|string|max:1000',
         ]);
@@ -486,6 +474,7 @@ class ApprovalController extends Controller
                 $s = $s + 1;
 
             } catch (\Exception $e) {
+                newrelic_notice_error('Error in approve all process', $e);
                 // 全承認処理での一般的なExceptionはUIまでthrow（既存動作を維持）
                 $errorMsg = '全承認処理中に予期しないエラーが発生しました';
                 $detailedErrorMsg = sprintf(
@@ -499,7 +488,6 @@ class ApprovalController extends Controller
                 );
                 Log::error($detailedErrorMsg);
 
-                // New Relicにエラーとして記録
 
                 $errors[] = "承認ID {$approval->id}: エラーが発生しました。";
                 $errorCount++;
@@ -513,8 +501,6 @@ class ApprovalController extends Controller
             $message .= " {$errorCount}件のエラーがありました。";
         }
 
-        // New Relicカスタムイベントを記録
-        $this->approvalService->recordBulkApprovalProcessed('ApproveAllProcessed', $totalCount, $successCount, $errorCount);
 
         if ($request->expectsJson()) {
             return response()->json([
@@ -533,8 +519,6 @@ class ApprovalController extends Controller
 
     public function rejectAll(Request $request)
     {
-        // New Relicカスタム属性を追加
-        $this->approvalService->recordBulkApprovalMetrics([], 'reject_all');
         $request->validate([
             'comment' => 'required|string|max:1000',
         ]);
@@ -580,6 +564,7 @@ class ApprovalController extends Controller
                 $successCount++;
 
             } catch (\Exception $e) {
+                newrelic_notice_error('Error in reject all process', $e);
                 // 全却下処理での一般的なExceptionはUIまでthrow（既存動作を維持）
                 $errorMsg = '全却下処理中に予期しないエラーが発生しました';
                 $detailedErrorMsg = sprintf(
@@ -593,7 +578,6 @@ class ApprovalController extends Controller
                 );
                 Log::error($detailedErrorMsg);
 
-                // New Relicにエラーとして記録
 
                 $errors[] = "承認ID {$approval->id}: エラーが発生しました。";
                 $errorCount++;
@@ -607,8 +591,6 @@ class ApprovalController extends Controller
             $message .= " {$errorCount}件のエラーがありました。";
         }
 
-        // New Relicカスタムイベントを記録
-        $this->approvalService->recordBulkApprovalProcessed('RejectAllProcessed', $totalCount, $successCount, $errorCount);
 
         if ($request->expectsJson()) {
             return response()->json([

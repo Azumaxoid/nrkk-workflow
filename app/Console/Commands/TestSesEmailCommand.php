@@ -39,6 +39,7 @@ class TestSesEmailCommand extends Command
             
             $this->info("テストメールが {$email} に送信されました。");
         } catch (\Exception $e) {
+            newrelic_notice_error('SES email command failed', $e);
             $this->error("メール送信に失敗しました: " . $e->getMessage());
         }
     }

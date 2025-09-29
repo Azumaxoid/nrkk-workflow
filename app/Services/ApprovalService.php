@@ -26,8 +26,6 @@ class ApprovalService
     {
         Log::debug('Getting approvals', ['filters' => $filters]);
 
-        // New Relicメトリクス記録
-        $this->recordApprovalQueryMetrics('get_approvals', $filters);
 
         $query = Approval::query();
 
@@ -69,8 +67,6 @@ class ApprovalService
 
         $results = $query->get();
 
-        // 結果をNew Relicに記録
-        $this->recordApprovalQueryResult(count($results), $filters);
 
         return $results;
     }
@@ -125,8 +121,6 @@ class ApprovalService
             'per_page' => $perPage
         ]);
 
-        // New Relicメトリクス記録
-        $this->recordApprovalQueryMetrics('get_approvals_paginated', $filters, $perPage);
 
         $query = Approval::query();
 
@@ -170,8 +164,6 @@ class ApprovalService
 
         $results = $query->paginate($perPage);
 
-        // 結果をNew Relicに記録
-        $this->recordApprovalPaginationResult($results, $filters);
 
         return $results;
     }
@@ -187,9 +179,6 @@ class ApprovalService
     {
         Log::debug('Finding approval', ['id' => $id, 'with' => $with]);
 
-        // New Relicメトリクス記録
-        if (!empty($with)) {
-        }
 
         $query = Approval::query();
 
@@ -199,9 +188,6 @@ class ApprovalService
 
         $result = $query->find($id);
 
-        // 結果をNew Relicに記録
-        if ($result) {
-        }
 
         return $result;
     }
@@ -237,137 +223,19 @@ class ApprovalService
     }
 
     /**
-     * 承認アクションの記録
-     * @private サービス層内部でのみ使用
-     */
-    private function recordApprovalAction(string $action)
-    {
-        $this->newRelicService->addCustomParameter('approval.action', $action);
-        Log::info('approval.action: ' . $action);
-    }
-
-    /**
-     * 一括承認処理の記録
-     */
-    public function recordBulkApprovalMetrics(array $approvalIds, string $action)
-    {
-        // アクションを記録
-        $this->recordApprovalAction($action);
-
-        // 一括処理件数を記録
-        $this->newRelicService->addCustomParameter('approval.bulk_count', count($approvalIds));
-        Log::info('approval.bulk_count: ' . count($approvalIds));
-    }
-    /**
-     * 承認処理のメトリクス記録
-     * @private サービス層内部でのみ使用
-     */
-    private function recordApprovalMetrics(Approval $approval, string $action)
-    {
-        // デバッグ: Approvalオブジェクトの内容を確認
-        Log::debug('Approval object debug', [
-            'approval_exists' => isset($approval),
-            'approval_id' => $approval->id ?? 'NULL',
-            'approval_attributes' => $approval->getAttributes()
-        ]);
-
-        // アクションを記録
-        $this->recordApprovalAction($action);
-
-        // 承認IDを記録
-        if ($approval->id) {
-            $this->newRelicService->addCustomParameter('approval.id', $approval->id);
-            Log::info('approval.id: ' . $approval->id);
-        } else {
-            Log::warning('approval.id is null or empty');
-        }
-
-        // アプリケーションIDを記録
-        if ($approval->application_id) {
-            $this->newRelicService->addCustomParameter('approval.application_id', $approval->application_id);
-            Log::info('approval.application_id: ' . $approval->application_id);
-        } else {
-            Log::warning('approval.application_id is null or empty');
-        }
-
-        // 承認者IDを記録
-        if ($approval->approver_id) {
-            $this->newRelicService->addCustomParameter('approval.approver_id', $approval->approver_id);
-            Log::info('approval.approver_id: ' . $approval->approver_id);
-        } else {
-            Log::warning('approval.approver_id is null or empty');
-        }
-
-        // 現在のステータスを記録
-        if ($approval->status) {
-            $this->newRelicService->addCustomParameter('approval.current_status', $approval->status);
-            Log::info('approval.current_status: ' . $approval->status);
-        } else {
-            Log::warning('approval.status is null or empty');
-        }
-    }
-
-    /**
-     * 承認処理完了のイベント記録
-     */
-    public function recordApprovalProcessed(Approval $approval, string $action, bool $hasComment = false)
-    {
-        $this->newRelicService->recordCustomEvent('ApprovalProcessed', [
-            'approval_id' => $approval->id,
-            'application_id' => $approval->application_id,
-            'action' => $action,
-            'user_id' => Auth::id(),
-            'approver_id' => $approval->approver_id,
-            'has_comment' => $hasComment
-        ]);
-    }
-
-
-    /**
-     * 一括承認処理完了のイベント記録
-     */
-    public function recordBulkApprovalProcessed(string $eventName, int $totalCount, int $successCount, int $errorCount)
-    {
-        $this->newRelicService->recordCustomEvent($eventName, [
-            'total_count' => $totalCount,
-            'success_count' => $successCount,
-            'error_count' => $errorCount,
-            'user_id' => Auth::id()
-        ]);
-        if ($eventName === 'BulkApprovalProcessed') {
-            $this->newRelicService->recordMetric('BulkApprovalSuccessCount', $successCount);
-            $this->newRelicService->recordMetric('BulkApprovalErrorCount', $errorCount);
-        }
-    }
-
-    /**
-     * 承認処理を実行してメトリクスを記録
+     * 承認処理を実行
      */
     public function processApproval(Approval $approval, string $comment = null): void
     {
-        // メトリクスを記録
-        $this->recordApprovalMetrics($approval, 'approve');
-
-        // 承認処理を実行
         $approval->approve($comment);
-
-        // イベントを記録
-        $this->recordApprovalProcessed($approval, 'approved', !empty($comment));
     }
 
     /**
-     * 却下処理を実行してメトリクスを記録
+     * 却下処理を実行
      */
     public function processRejection(Approval $approval, string $comment): void
     {
-        // メトリクスを記録
-        $this->recordApprovalMetrics($approval, 'reject');
-
-        // 却下処理を実行
         $approval->reject($comment);
-
-        // イベントを記録
-        $this->recordApprovalProcessed($approval, 'rejected', !empty($comment));
     }
 
     /**
@@ -375,10 +243,6 @@ class ApprovalService
      */
     public function processBulkApprovalItem(Approval $approval, string $comment = null): void
     {
-        // 各承認のメトリクスを記録（bulkコンテキストで）
-        $this->recordApprovalMetrics($approval, 'bulk_approve_item');
-
-        // 承認処理を実行
         $approval->approve($comment);
     }
 
@@ -387,20 +251,9 @@ class ApprovalService
      */
     public function processBulkRejectionItem(Approval $approval, string $comment): void
     {
-        // 各却下のメトリクスを記録（bulkコンテキストで）
-        $this->recordApprovalMetrics($approval, 'bulk_reject_item');
-
-        // 却下処理を実行
         $approval->reject($comment);
     }
 
-    /**
-     * エラーをNew Relicに通知
-     */
-    public function noticeError(string $message, \Exception $exception = null)
-    {
-        $this->newRelicService->noticeError($message, $exception);
-    }
 
     // 後方互換性のためのメソッド（段階的に削除予定）
 
@@ -420,27 +273,6 @@ class ApprovalService
         return $this->getApprovals(['ids' => $ids]);
     }
 
-    /**
-     * 承認クエリのメトリクスをNew Relicに記録
-     */
-    protected function recordApprovalQueryMetrics(string $method, array $filters, ?int $perPage = null): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
 
-    /**
-     * 承認クエリ結果をNew Relicに記録
-     */
-    protected function recordApprovalQueryResult(int $count, array $filters): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
 
-    /**
-     * 承認ページネーション結果をNew Relicに記録
-     */
-    protected function recordApprovalPaginationResult($results, array $filters): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
 }

@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Models\ApprovalFlow;
 use App\Models\Approval;
 use App\Services\NotificationService;
-use App\Services\NewRelicService;
 
 class BulkApprovalTest extends Command
 {
@@ -17,13 +16,11 @@ class BulkApprovalTest extends Command
     protected $description = 'マルチ組織一括承認テストの実行';
 
     protected $notificationService;
-    protected $newRelicService;
 
-    public function __construct(NotificationService $notificationService, NewRelicService $newRelicService)
+    public function __construct(NotificationService $notificationService)
     {
         parent::__construct();
         $this->notificationService = $notificationService;
-        $this->newRelicService = $newRelicService;
     }
 
     public function handle()
@@ -33,9 +30,6 @@ class BulkApprovalTest extends Command
         $this->info('🧪 マルチ組織一括承認テスト開始');
         $this->info('=' . str_repeat('=', 50));
 
-        // New Relicトランザクション名を設定
-        $this->newRelicService->setTransactionName('BulkApprovalTest');
-        $this->newRelicService->backgroundJob(true);
 
         try {
             // Step 1: 3つの組織をランダムに選択
@@ -151,6 +145,7 @@ class BulkApprovalTest extends Command
                             $this->checkApplicationStatus($approval->application);
 
                         } catch (\Exception $e) {
+                            newrelic_notice_error('Bulk approval test error', $e);
                             $this->error("   ❌ 承認エラー: {$e->getMessage()}");
                         }
                     }
@@ -166,15 +161,6 @@ class BulkApprovalTest extends Command
                     'success' => true,
                 ];
 
-                // New Relicに組織ごとのメトリクスを送信
-                $this->newRelicService->recordCustomEvent('OrganizationApproval', [
-                    'organization_id' => $org->id,
-                    'organization_name' => $org->name,
-                    'approval_count' => $orgApprovedCount,
-                    'processing_time' => $orgProcessingTime,
-                    'approval_type' => 'bulk',
-                    'success' => true,
-                ]);
             }
 
             // 最終承認（管理者による）
@@ -199,6 +185,7 @@ class BulkApprovalTest extends Command
                     $approval->application->update(['status' => 'approved']);
                     
                 } catch (\Exception $e) {
+                    newrelic_notice_error('Final approval error in bulk test', $e);
                     $this->error("   ❌ 最終承認エラー: {$e->getMessage()}");
                 }
             }
@@ -214,33 +201,6 @@ class BulkApprovalTest extends Command
             $this->line("   - 承認処理数: {$approvedCount}");
             $this->line("   - 実行時間: " . round($executionTime, 2) . "秒");
 
-            // New Relicに全体メトリクスを記録
-            $totalApprovals = 0;
-            $totalTime = 0;
-            $successCount = 0;
-            foreach ($organizationResults as $result) {
-                $totalApprovals += $result['approved_count'] ?? 0;
-                $totalTime += $result['processing_time'] ?? 0;
-                if ($result['success'] ?? false) {
-                    $successCount++;
-                }
-            }
-
-            $this->newRelicService->recordCustomEvent('BulkApprovalTestCompleted', [
-                'total_created' => $totalCreated,
-                'total_approved' => $approvedCount,
-                'total_execution_time' => $executionTime,
-                'organization_count' => count($selectedOrganizations),
-                'total_approvals' => $totalApprovals,
-                'total_processing_time' => $totalTime,
-                'success_count' => $successCount,
-                'average_processing_time' => count($organizationResults) > 0 ? $totalTime / count($organizationResults) : 0,
-            ]);
-
-            // メトリクスも記録
-            $this->newRelicService->recordMetric('BulkApproval/TotalApprovals', $totalApprovals);
-            $this->newRelicService->recordMetric('BulkApproval/TotalTime', $totalTime);
-            $this->newRelicService->recordMetric('BulkApproval/SuccessRate', count($organizationResults) > 0 ? ($successCount / count($organizationResults)) * 100 : 0);
             // 最終状態確認
             $this->info("\n📋 最終状態確認:");
             foreach ($createdApplications as $app) {
@@ -249,11 +209,10 @@ class BulkApprovalTest extends Command
             }
 
         } catch (\Exception $e) {
+            newrelic_notice_error('Bulk approval test execution failed', $e);
             $this->error("❌ テスト実行エラー: {$e->getMessage()}");
             $this->error($e->getTraceAsString());
 
-            // New Relicにエラーを記録
-            $this->newRelicService->noticeError('BulkApprovalTest failed', $e);
         }
     }
 
@@ -282,6 +241,7 @@ class BulkApprovalTest extends Command
 
             return $application;
         } catch (\Exception $e) {
+            newrelic_notice_error('Application creation error in bulk test', $e);
             $this->error("   ❌ 申請作成エラー: {$e->getMessage()}");
             return null;
         }

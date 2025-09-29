@@ -18,24 +18,17 @@ class ApprovalAuthorizationService
      */
     public function authorizeApprovalAction(User $user, Approval $approval): void
     {
-        // New Relicメトリクス記録
-        $this->recordAuthorizationAttempt('single', $user, $approval);
 
         if (!$this->canActOnApproval($user, $approval)) {
             $errorMessage = "承認ID {$approval->id} に対する権限がありません。承認者ID: {$approval->approver_id}, ユーザーID: {$user->id}";
 
             $exception = new AuthorizationException($errorMessage);
 
-            // New Relicにエラーを記録（例外インスタンスを渡す）
 
-            // 認可失敗のメトリクス記録
-            $this->recordAuthorizationFailure('single', $user, $approval);
 
             throw $exception;
         }
 
-        // 認可成功のメトリクス記録
-        $this->recordAuthorizationSuccess('single', $user, $approval);
     }
 
     /**
@@ -43,8 +36,6 @@ class ApprovalAuthorizationService
      */
     public function authorizeBulkApprovalAction(User $user, array $approvalIds): array
     {
-        // New Relicメトリクス記録
-        $this->recordBulkAuthorizationAttempt($user, $approvalIds);
 
         $unauthorizedApprovals = [];
 
@@ -74,16 +65,11 @@ class ApprovalAuthorizationService
             }
             $exception = new AuthorizationException($errorMessage);
 
-            // New Relicにエラーを記録（例外インスタンスを渡す）
 
-            // 一括認可失敗のメトリクス記録
-            $this->recordBulkAuthorizationFailure($user, $approvalIds, $unauthorizedApprovals);
 
             throw $exception;
         }
 
-        // 一括認可成功のメトリクス記録
-        $this->recordBulkAuthorizationSuccess($user, $approvalIds);
 
         return [];
     }
@@ -137,6 +123,7 @@ class ApprovalAuthorizationService
                 $validApprovals[] = $approval;
 
             } catch (AuthorizationException $e) {
+                newrelic_notice_error('Authorization error in approval validation', $e);
                 $errors[] = "承認ID {$approvalId}: " . $e->getMessage();
             }
         }
@@ -147,50 +134,4 @@ class ApprovalAuthorizationService
         ];
     }
 
-    /**
-     * 単一認可試行のメトリクスをNew Relicに記録
-     */
-    protected function recordAuthorizationAttempt(string $type, User $user, Approval $approval): void
-    {
-    }
-
-    /**
-     * 単一認可成功のメトリクスをNew Relicに記録
-     */
-    protected function recordAuthorizationSuccess(string $type, User $user, Approval $approval): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
-
-    /**
-     * 単一認可失敗のメトリクスをNew Relicに記録
-     */
-    protected function recordAuthorizationFailure(string $type, User $user, Approval $approval): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
-
-    /**
-     * 一括認可試行のメトリクスをNew Relicに記録
-     */
-    protected function recordBulkAuthorizationAttempt(User $user, array $approvalIds): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
-
-    /**
-     * 一括認可成功のメトリクスをNew Relicに記録
-     */
-    protected function recordBulkAuthorizationSuccess(User $user, array $approvalIds): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
-
-    /**
-     * 一括認可失敗のメトリクスをNew Relicに記録
-     */
-    protected function recordBulkAuthorizationFailure(User $user, array $approvalIds, array $unauthorizedApprovals): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
 }

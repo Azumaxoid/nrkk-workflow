@@ -21,8 +21,6 @@ class NotificationService
 
     public function sendNotificationToChannel($user, $channel, $eventType, $title, $message, $data = null)
     {
-        // New Relicメトリクス記録
-        $this->recordNotificationMetrics('single_channel', $channel, $eventType, $user);
 
         // 特定のチャンネルだけに送信
         $log = NotificationLog::create([
@@ -37,8 +35,6 @@ class NotificationService
 
         $result = $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
 
-        // 送信結果をNew Relicに記録
-        $this->recordNotificationResult($result, $channel, $eventType);
 
         return $result;
     }
@@ -50,8 +46,6 @@ class NotificationService
             return false;
         }
 
-        // New Relicメトリクス記録
-        $this->recordNotificationMetrics('multi_channel', null, $eventType, $user);
 
         $settings = $user->notificationSettings()
             ->forEvent($eventType)
@@ -75,12 +69,9 @@ class NotificationService
                 $results[$channel] = $result;
                 $channelCount++;
 
-                // 各チャンネル結果をNew Relicに記録
-                $this->recordNotificationResult($result, $channel, $eventType);
             }
         }
 
-        // 総合メトリクス記録
 
         return $results;
     }
@@ -110,6 +101,7 @@ class NotificationService
                     return false;
             }
         } catch (\Exception $e) {
+            newrelic_notice_error('Notification sending failed', $e);
             $log->markAsFailed($e->getMessage());
             Log::error('Notification sending failed', [
                 'user_id' => $user->id,
@@ -134,6 +126,7 @@ class NotificationService
             $log->markAsSent();
             return true;
         } catch (\Exception $e) {
+            newrelic_notice_error('Email sending failed', $e);
             $log->markAsFailed($e->getMessage());
             return false;
         }
@@ -182,6 +175,7 @@ class NotificationService
                 return false;
             }
         } catch (\Exception $e) {
+            newrelic_notice_error('Slack sending failed', $e);
             $log->markAsFailed($e->getMessage());
             return false;
         }
@@ -319,26 +313,8 @@ class NotificationService
 
         $readCount = $query->unread()->update(['read_at' => now()]);
 
-        // New Relicメトリクス記録
-        if ($notificationId) {
-        }
 
         return $readCount;
     }
 
-    /**
-     * 通知メトリクスをNew Relicに記録
-     */
-    protected function recordNotificationMetrics(string $type, ?string $channel, string $eventType, User $user): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
-
-    /**
-     * 通知送信結果をNew Relicに記録
-     */
-    protected function recordNotificationResult(bool $result, string $channel, string $eventType): void
-    {
-        // New Relic記録メソッドは削除済み
-    }
 }
