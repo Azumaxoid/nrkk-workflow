@@ -4,16 +4,13 @@ namespace App\Services;
 
 use App\Models\Approval;
 use App\Models\User;
-use App\Services\NewRelicService;
 use Illuminate\Auth\Access\AuthorizationException;
 
 class ApprovalAuthorizationService
 {
-    protected $newRelicService;
-
     public function __construct()
     {
-        $this->newRelicService = app(NewRelicService::class);
+        //
     }
 
     /**
@@ -21,16 +18,17 @@ class ApprovalAuthorizationService
      */
     public function authorizeApprovalAction(User $user, Approval $approval): void
     {
+
         if (!$this->canActOnApproval($user, $approval)) {
             $errorMessage = "承認ID {$approval->id} に対する権限がありません。承認者ID: {$approval->approver_id}, ユーザーID: {$user->id}";
 
             $exception = new AuthorizationException($errorMessage);
 
-            // New Relicにエラーを記録（例外インスタンスを渡す）
-            $this->newRelicService->noticeError($errorMessage, $exception);
+
 
             throw $exception;
         }
+
     }
 
     /**
@@ -38,6 +36,7 @@ class ApprovalAuthorizationService
      */
     public function authorizeBulkApprovalAction(User $user, array $approvalIds): array
     {
+
         $unauthorizedApprovals = [];
 
         foreach ($approvalIds as $approvalId) {
@@ -66,11 +65,11 @@ class ApprovalAuthorizationService
             }
             $exception = new AuthorizationException($errorMessage);
 
-            // New Relicにエラーを記録（例外インスタンスを渡す）
-            $this->newRelicService->noticeError($errorMessage, $exception);
+
 
             throw $exception;
         }
+
 
         return [];
     }
@@ -124,6 +123,7 @@ class ApprovalAuthorizationService
                 $validApprovals[] = $approval;
 
             } catch (AuthorizationException $e) {
+                newrelic_notice_error('Authorization error in approval validation', $e);
                 $errors[] = "承認ID {$approvalId}: " . $e->getMessage();
             }
         }
@@ -133,4 +133,5 @@ class ApprovalAuthorizationService
             'errors' => $errors
         ];
     }
+
 }

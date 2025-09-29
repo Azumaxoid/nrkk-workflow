@@ -50,6 +50,7 @@ class TestSesEmail extends Command
             
             return Command::SUCCESS;
         } catch (\Exception $e) {
+            newrelic_notice_error('SES email test failed', $e);
             $this->error('❌ Failed to send test email');
             $this->error('Error: ' . $e->getMessage());
             

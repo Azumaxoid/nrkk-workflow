@@ -61,6 +61,7 @@ class TestSlackNotificationCommand extends Command
                 $this->error('レスポンス: ' . $response->body());
             }
         } catch (\Exception $e) {
+            newrelic_notice_error('Slack notification test failed', $e);
             $this->error('❌ エラーが発生しました: ' . $e->getMessage());
         }
     }

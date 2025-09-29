@@ -18,6 +18,9 @@ echo "newrelic.attributes.exclude = \"request.parameters.wstoken\"" >> /usr/loca
 echo "newrelic.error_collector.attributes.exclude = \"request.parameters.wstoken\"" >> /usr/local/etc/php/conf.d/newrelic.ini
 echo "newrelic.transaction_events.attributes.exclude = \"request.parameters.wstoken\"" >> /usr/local/etc/php/conf.d/newrelic.ini
 echo "newrelic.transaction_tracer.attributes.exclude = \"request.parameters.wstoken\"" >> /usr/local/etc/php/conf.d/newrelic.ini
+echo "newrelic.application_logging.forwarding.log_level = \"INFO\"" >> /usr/local/etc/php/conf.d/newrelic.ini
+echo "newrelic.application_logging.forwarding.labels.enabled = true" >> /usr/local/etc/php/conf.d/newrelic.ini
+echo "newrelic.application_logging.forwarding.context_data.enabled = true" >> /usr/local/etc/php/conf.d/newrelic.ini
 
 # Execute the main command
 exec "$@"

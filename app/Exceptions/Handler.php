@@ -2,7 +2,6 @@
 
 namespace App\Exceptions;
 
-use App\Services\NewRelicService;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
@@ -11,7 +10,6 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
-    protected $newRelicService;
 
     /**
      * A list of exception types with their corresponding custom log levels.
@@ -45,7 +43,6 @@ class Handler extends ExceptionHandler
     public function __construct()
     {
         parent::__construct(app());
-        $this->newRelicService = app(NewRelicService::class);
     }
 
     /**
@@ -53,10 +50,7 @@ class Handler extends ExceptionHandler
      */
     public function register(): void
     {
-        $this->reportable(function (Throwable $e) {
-            // 全ての例外をNew Relicに報告
-            $this->reportToNewRelic($e);
-        });
+        //
     }
 
     /**
@@ -83,8 +77,6 @@ class Handler extends ExceptionHandler
             parent::report($e);
         }
 
-        // New Relicに報告
-        $this->reportToNewRelic($e);
     }
 
     /**
@@ -106,84 +98,6 @@ class Handler extends ExceptionHandler
         ]);
     }
 
-    /**
-     * New Relicへの例外報告
-     */
-    protected function reportToNewRelic(Throwable $e): void
-    {
-        Log::debug(sprintf(
-            'New Relic報告開始 | 例外クラス: %s | ユーザーID: %s',
-            get_class($e),
-            auth()->id() ?? 'guest'
-        ));
-
-        try {
-            $errorMessage = sprintf(
-                '%s: %s (File: %s, Line: %d)',
-                get_class($e),
-                $e->getMessage(),
-                $e->getFile(),
-                $e->getLine()
-            );
-
-            // AuthorizationExceptionは notice レベル、その他は error レベル
-            if ($e instanceof AuthorizationException) {
-                $this->newRelicService->noticeError($errorMessage, $e);
-            } else {
-                $this->newRelicService->noticeError($errorMessage, $e);
-            }
-
-            // 追加のコンテキスト情報をNew Relicに送信
-            $this->addNewRelicContext($e);
-
-            Log::info(sprintf(
-                'New Relic報告完了 | 例外クラス: %s | ユーザーID: %s',
-                get_class($e),
-                auth()->id() ?? 'guest'
-            ));
-
-        } catch (\Exception $newRelicException) {
-            // New Relic への報告が失敗しても元の例外処理は継続
-            Log::error('New Relic報告失敗', [
-                'original_exception' => $e->getMessage(),
-                'original_exception_class' => get_class($e),
-                'newrelic_exception' => $newRelicException->getMessage(),
-                'newrelic_exception_class' => get_class($newRelicException),
-                'user_id' => auth()->id()
-            ]);
-        }
-    }
-
-    /**
-     * New Relicにコンテキスト情報を追加
-     */
-    protected function addNewRelicContext(Throwable $e): void
-    {
-        // リクエスト情報
-        if (app()->bound('request') && request()) {
-            newrelic_add_custom_parameter('request.url', request()->fullUrl());
-            newrelic_add_custom_parameter('request.method', request()->method());
-            newrelic_add_custom_parameter('request.ip', request()->ip());
-            newrelic_add_custom_parameter('request.user_agent', request()->userAgent());
-        }
-
-        // ユーザー情報
-        if (auth()->check()) {
-            newrelic_add_custom_parameter('user.id', auth()->id());
-            newrelic_add_custom_parameter('user.email', auth()->user()->email ?? 'unknown');
-        }
-
-        // 例外情報
-        newrelic_add_custom_parameter('exception.class', get_class($e));
-        newrelic_add_custom_parameter('exception.file', $e->getFile());
-        newrelic_add_custom_parameter('exception.line', $e->getLine());
-
-        // スタックトレース（最初の5行のみ）
-        $trace = explode("\n", $e->getTraceAsString());
-        for ($i = 0; $i < min(5, count($trace)); $i++) {
-            newrelic_add_custom_parameter("stack.{$i}", $trace[$i]);
-        }
-    }
 
     /**
      * Render an exception into an HTTP response.
@@ -199,18 +113,6 @@ class Handler extends ExceptionHandler
             $request->expectsJson() ? 'true' : 'false'
         ));
 
-        // renderでエラーが発生した場合もNew Relicに通知
-        try {
-            $this->newRelicService->noticeError("Rendering exception: " . $e->getMessage(), $e);
-        } catch (\Exception $noticeException) {
-            // New Relic通知が失敗しても処理は継続
-            Log::error('New Relicレンダリング通知失敗', [
-                'original_exception' => $e->getMessage(),
-                'original_exception_class' => get_class($e),
-                'notice_exception' => $noticeException->getMessage(),
-                'user_id' => auth()->id()
-            ]);
-        }
 
         // AuthorizationExceptionの場合、ユーザーフレンドリーなメッセージに変換
         if ($e instanceof AuthorizationException) {

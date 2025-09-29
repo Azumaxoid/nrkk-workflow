@@ -14,8 +14,14 @@ use App\Mail\ApplicationNotificationMail;
 
 class NotificationService
 {
+    public function __construct()
+    {
+        //
+    }
+
     public function sendNotificationToChannel($user, $channel, $eventType, $title, $message, $data = null)
     {
+
         // 特定のチャンネルだけに送信
         $log = NotificationLog::create([
             'user_id' => $user->id,
@@ -27,7 +33,10 @@ class NotificationService
             'status' => 'pending',
         ]);
 
-        return $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
+        $result = $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
+
+
+        return $result;
     }
 
     public function sendNotification($userId, $eventType, $title, $message, $data = null)
@@ -36,6 +45,7 @@ class NotificationService
         if (!$user) {
             return false;
         }
+
 
         $settings = $user->notificationSettings()
             ->forEvent($eventType)
@@ -52,12 +62,16 @@ class NotificationService
         }
 
         $results = [];
+        $channelCount = 0;
         foreach ($settings as $setting) {
             foreach ($setting->channels as $channel) {
                 $result = $this->sendByChannel($user, $channel, $eventType, $title, $message, $data);
                 $results[$channel] = $result;
+                $channelCount++;
+
             }
         }
+
 
         return $results;
     }
@@ -87,6 +101,7 @@ class NotificationService
                     return false;
             }
         } catch (\Exception $e) {
+            newrelic_notice_error('Notification sending failed', $e);
             $log->markAsFailed($e->getMessage());
             Log::error('Notification sending failed', [
                 'user_id' => $user->id,
@@ -111,6 +126,7 @@ class NotificationService
             $log->markAsSent();
             return true;
         } catch (\Exception $e) {
+            newrelic_notice_error('Email sending failed', $e);
             $log->markAsFailed($e->getMessage());
             return false;
         }
@@ -159,6 +175,7 @@ class NotificationService
                 return false;
             }
         } catch (\Exception $e) {
+            newrelic_notice_error('Slack sending failed', $e);
             $log->markAsFailed($e->getMessage());
             return false;
         }
@@ -289,11 +306,15 @@ class NotificationService
     public function markAsRead($userId, $notificationId = null)
     {
         $query = NotificationLog::forUser($userId)->ofType('database');
-        
+
         if ($notificationId) {
             $query->where('id', $notificationId);
         }
-        
-        return $query->unread()->update(['read_at' => now()]);
+
+        $readCount = $query->unread()->update(['read_at' => now()]);
+
+
+        return $readCount;
     }
+
 }

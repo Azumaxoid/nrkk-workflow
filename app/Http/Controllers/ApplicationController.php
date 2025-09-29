@@ -26,7 +26,6 @@ class ApplicationController extends Controller
             'filters' => $request->only(['status', 'type'])
         ]);
 
-
         $query = Application::with(['applicant', 'approvals.approver']);
 
         if (Auth::user()->isAdmin()) {
@@ -56,9 +55,6 @@ class ApplicationController extends Controller
             'current_page_count' => $applications->count()
         ]);
 
-        // New Relicメトリクスを記録
-        $this->applicationService->recordIndexMetrics($request, $applications);
-
         return view('applications.index', compact('applications'));
     }
 
@@ -76,8 +72,6 @@ class ApplicationController extends Controller
             'amount' => $request->input('amount')
         ]);
 
-        // New Relicカスタム属性を追加
-        $this->applicationService->recordCreateMetrics($request);
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -124,9 +118,6 @@ class ApplicationController extends Controller
             'application_status' => $application->status
         ]);
 
-        // New Relicカスタム属性を追加
-        $this->applicationService->recordShowMetrics($application);
-
         $this->authorize('view', $application);
 
         $application->load(['applicant', 'approvals.approver']);
@@ -154,9 +145,6 @@ class ApplicationController extends Controller
             'current_status' => $application->status,
             'update_data' => $request->only(['title', 'type', 'priority', 'amount'])
         ]);
-
-        // New Relicカスタム属性を追加
-        $this->applicationService->recordUpdateMetrics($application);
 
         $this->authorize('update', $application);
 
@@ -202,9 +190,6 @@ class ApplicationController extends Controller
             'updated_fields' => array_keys($validated)
         ]);
 
-        // New Relicカスタムイベントを記録
-        $this->applicationService->recordApplicationUpdated($application, $validated);
-
         return redirect()->route('applications.show', $application)
             ->with('success', '申請書を更新しました。');
     }
@@ -232,9 +217,6 @@ class ApplicationController extends Controller
             'current_status' => $application->status
         ]);
 
-        // New Relicカスタム属性を追加
-        $this->applicationService->recordSubmitMetrics($application);
-
         $this->authorize('update', $application);
 
         if (!$application->canBeSubmitted()) {
@@ -245,6 +227,7 @@ class ApplicationController extends Controller
         try {
             $flow = $this->applicationService->submitApplication($application);
         } catch (\Exception $e) {
+            newrelic_notice_error('Application submission failed', $e);
             return redirect()->route('applications.show', $application)
                 ->with('error', $e->getMessage());
         }
@@ -325,8 +308,6 @@ class ApplicationController extends Controller
             'displayed_approvals' => $paginatedApprovals->count(),
         ]);
 
-        // New Relicメトリクスを記録
-        $this->applicationService->recordMyApprovalsMetrics($allApprovals, $authorizedApprovals, $paginatedApprovals, $queryCount);
 
         return view('applications.my-approvals', compact('approvals'));
     }

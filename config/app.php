@@ -184,19 +184,5 @@ return [
         // 'Example' => App\Facades\Example::class,
     ])->toArray(),
 
-    /*
-    |--------------------------------------------------------------------------
-    | New Relic Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for New Relic APM monitoring.
-    |
-    */
-
-    'newrelic' => [
-        'license_key' => env('NEWRELIC_LICENSE_KEY'),
-        'app_name' => env('NEWRELIC_APP_NAME', env('APP_NAME', 'Laravel')),
-        'log_level' => env('NEWRELIC_LOG_LEVEL', 'info'),
-    ],
 
 ];
